@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  syncfusion_flutter_charts: ^27.1.52
+  syncfusion_flutter_charts: ^30.2.7
   d_chart: ^2.9.0
 
   # The following adds the Cupertino Icons font to your application.
@@ -42,7 +42,7 @@ dependencies:
   geolocator: ^11.0.0
   permission_handler: ^11.3.1
   url_launcher_android: ^6.3.12
-  intl: ^0.19.0
+  intl: ^0.20.2
   geocoding: ^3.0.0
 
 dev_dependencies:
