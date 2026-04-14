@@ -113,7 +113,7 @@ class _SettingsState extends State<Settings> {
                             icon: Icons.dark_mode,
                             trailing: Switch(
                               value: themeProvider.isDarkMode,
-                              activeColor: themeProvider.gradientColors[0],
+                              activeThumbColor: themeProvider.gradientColors[0],
                               onChanged: (value) {
                                 themeProvider.toggleTheme();
                               },
@@ -130,7 +130,7 @@ class _SettingsState extends State<Settings> {
                             icon: Icons.format_size,
                             trailing: Switch(
                               value: _compactMode,
-                              activeColor: themeProvider.gradientColors[0],
+                              activeThumbColor: themeProvider.gradientColors[0],
                               onChanged: (value) {
                                 setState(() {
                                   _compactMode = value;
@@ -281,7 +281,7 @@ class _SettingsState extends State<Settings> {
                             icon: Icons.notifications,
                             trailing: Switch(
                               value: _notificationsEnabled,
-                              activeColor: themeProvider.gradientColors[0],
+                              activeThumbColor: themeProvider.gradientColors[0],
                               onChanged: (value) {
                                 setState(() {
                                   _notificationsEnabled = value;
@@ -302,7 +302,7 @@ class _SettingsState extends State<Settings> {
                             icon: Icons.backup,
                             trailing: Switch(
                               value: _autoBackupEnabled,
-                              activeColor: themeProvider.gradientColors[0],
+                              activeThumbColor: themeProvider.gradientColors[0],
                               onChanged: (value) {
                                 setState(() {
                                   _autoBackupEnabled = value;

@@ -541,7 +541,7 @@ class _AddProduct extends State<AddProduct> {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return DropdownButtonFormField(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: themeProvider.textColor),

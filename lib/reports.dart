@@ -90,7 +90,7 @@ class _ReportsState extends State<Reports> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('⚠️ Showing sample data as fallback.\n'
-                'Real data available: ${totalSales} sales (\$${salesAmount.toStringAsFixed(2)}), ${totalProducts} products'),
+                'Real data available: $totalSales sales (\$${salesAmount.toStringAsFixed(2)}), $totalProducts products'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 5),
           ),
@@ -669,7 +669,7 @@ class _ReportsState extends State<Reports> {
                                 ),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
-                                  value: _selectedPeriod,
+                                  initialValue: _selectedPeriod,
                                   decoration: InputDecoration(
                                     contentPadding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 8),
@@ -725,7 +725,7 @@ class _ReportsState extends State<Reports> {
                                 ),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
-                                  value: _selectedType,
+                                  initialValue: _selectedType,
                                   decoration: InputDecoration(
                                     contentPadding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 8),
@@ -786,7 +786,7 @@ class _ReportsState extends State<Reports> {
                                 ),
                                 const SizedBox(height: 4),
                                 DropdownButtonFormField<String>(
-                                  value: _sortBy,
+                                  initialValue: _sortBy,
                                   decoration: InputDecoration(
                                     contentPadding: const EdgeInsets.symmetric(
                                         horizontal: 12, vertical: 8),

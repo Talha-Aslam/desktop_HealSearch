@@ -522,7 +522,7 @@ class _ProfileState extends State<Profile> {
                                   ),
                                   trailing: Switch(
                                     value: themeProvider.isDarkMode,
-                                    activeColor:
+                                    activeThumbColor:
                                         themeProvider.gradientColors[0],
                                     onChanged: (_) =>
                                         themeProvider.toggleTheme(),

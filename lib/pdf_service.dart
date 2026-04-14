@@ -84,7 +84,7 @@ class PdfService {
         String itemNum = '${i + 1}'.padLeft(2);
 
         String name = (item['name'] ?? 'Unknown').toString();
-        if (name.length > 27) name = name.substring(0, 24) + '...';
+        if (name.length > 27) name = '${name.substring(0, 24)}...';
         name = name.padRight(27);
 
         int qty = item['quantity'] ?? 0;
@@ -153,8 +153,9 @@ class PdfService {
     buffer.writeln(
         '┌─ TRANSACTION DETAILS ─────────────────────────────────────────────┐');
     String transactionId = (invoice['id'] ?? '').toString();
-    if (transactionId.length > 8)
+    if (transactionId.length > 8) {
       transactionId = transactionId.substring(0, 8).toUpperCase();
+    }
     buffer.writeln(
         '│ Transaction ID: ${transactionId.padLeft(20)}                                     │');
     buffer.writeln(
@@ -270,7 +271,7 @@ class PdfService {
       List<dynamic> topProducts = reportData['topProducts'];
       for (var product in topProducts.take(10)) {
         String name = (product['name'] ?? 'Unknown').toString();
-        if (name.length > 25) name = name.substring(0, 22) + '...';
+        if (name.length > 25) name = '${name.substring(0, 22)}...';
 
         int qtySold = product['quantitySold'] ?? 0;
         double revenue = (product['revenue'] ?? 0.0).toDouble();
@@ -323,9 +324,9 @@ class PdfService {
       double price = (product['price'] ?? 0.0).toDouble();
       totalValue += qty * price;
 
-      if (qty == 0)
+      if (qty == 0) {
         outOfStockCount++;
-      else if (qty < 10) lowStockCount++;
+      } else if (qty < 10) lowStockCount++;
     }
 
     buffer.writeln('SUMMARY:');
@@ -344,10 +345,10 @@ class PdfService {
 
     for (var product in products) {
       String name = (product['name'] ?? 'Unknown').toString();
-      if (name.length > 25) name = name.substring(0, 22) + '...';
+      if (name.length > 25) name = '${name.substring(0, 22)}...';
 
       String category = (product['category'] ?? 'Other').toString();
-      if (category.length > 12) category = category.substring(0, 9) + '...';
+      if (category.length > 12) category = '${category.substring(0, 9)}...';
 
       int qty = product['quantity'] ?? 0;
       double price = (product['price'] ?? 0.0).toDouble();
@@ -355,9 +356,9 @@ class PdfService {
 
       // Add warning indicators
       String qtyStr = qty.toString();
-      if (qty == 0)
+      if (qty == 0) {
         qtyStr += ' (OUT)';
-      else if (qty < 10) qtyStr += ' (LOW)';
+      } else if (qty < 10) qtyStr += ' (LOW)';
 
       buffer.writeln('${name.padRight(25)} ${category.padRight(12)} '
           '${qtyStr.padLeft(8)} \$${price.toStringAsFixed(2).padLeft(8)} '

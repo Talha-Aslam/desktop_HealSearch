@@ -109,7 +109,7 @@ class _SidebarState extends State<Sidebar> {
                 ),
                 Switch(
                   value: themeProvider.isDarkMode,
-                  activeColor: themeProvider.gradientColors[0],
+                  activeThumbColor: themeProvider.gradientColors[0],
                   onChanged: (_) => themeProvider.toggleTheme(),
                 ),
               ],

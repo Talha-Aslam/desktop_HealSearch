@@ -293,7 +293,7 @@ class ExportService {
         if (stock <= 10) {
           hasLowStock = true;
           String status = stock == 0 ? 'Out of Stock' : 'Low Stock';
-          csvContent += '"${product['name'] ?? ''}",${stock},$status\n';
+          csvContent += '"${product['name'] ?? ''}",$stock,$status\n';
         }
       }
       if (!hasLowStock) {

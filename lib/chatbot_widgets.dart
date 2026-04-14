@@ -204,7 +204,7 @@ class DataVisualizationWidget extends StatelessWidget {
         ),
         if (alerts.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Container(
+          SizedBox(
             height: 120,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
@@ -223,10 +223,12 @@ class DataVisualizationWidget extends StatelessWidget {
   Widget _buildAlertCard(
       Map<String, dynamic> alert, ThemeProvider themeProvider) {
     Color alertColor = Colors.orange;
-    if (alert['severity']?.toString().contains('critical') == true)
+    if (alert['severity']?.toString().contains('critical') == true) {
       alertColor = Colors.red;
-    if (alert['severity']?.toString().contains('warning') == true)
+    }
+    if (alert['severity']?.toString().contains('warning') == true) {
       alertColor = Colors.orange;
+    }
 
     return Container(
       width: 140,
@@ -433,8 +435,9 @@ class ActionButtonsWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    if (suggestions == null || suggestions!.isEmpty)
+    if (suggestions == null || suggestions!.isEmpty) {
       return const SizedBox.shrink();
+    }
 
     return Container(
       margin: const EdgeInsets.only(top: 12),

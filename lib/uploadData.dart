@@ -271,7 +271,7 @@ class _UploadDataState extends State<UploadData> {
 
         setState(() {
           _uploadStatus =
-              'Uploaded ${successCount}/${products.length} products...';
+              'Uploaded $successCount/${products.length} products...';
         });
       } catch (e) {
         errorCount++;

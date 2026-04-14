@@ -121,7 +121,7 @@ class StockAlertService extends ChangeNotifier {
           currentStock: currentStock,
           threshold: criticalStockThreshold,
           severity: AlertSeverity.critical,
-          message: '$productName is critically low (${currentStock} remaining)',
+          message: '$productName is critically low ($currentStock remaining)',
           timestamp: DateTime.now(),
           actionRequired: 'Restock soon',
         );
@@ -134,7 +134,7 @@ class StockAlertService extends ChangeNotifier {
           currentStock: currentStock,
           threshold: lowStockThreshold,
           severity: AlertSeverity.warning,
-          message: '$productName is running low (${currentStock} remaining)',
+          message: '$productName is running low ($currentStock remaining)',
           timestamp: DateTime.now(),
           actionRequired: 'Consider restocking',
         );

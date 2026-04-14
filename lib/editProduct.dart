@@ -893,7 +893,7 @@ class _EditProductState extends State<EditProduct> {
     }
 
     return DropdownButtonFormField(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: themeProvider.textColor),

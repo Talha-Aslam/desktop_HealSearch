@@ -58,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> {
               subtitleSize: 18,
             ),
             const SizedBox(height: 40),
-            Container(
+            SizedBox(
               width: 40,
               height: 40,
               child: const CircularProgressIndicator(

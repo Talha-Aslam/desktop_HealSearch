@@ -391,18 +391,19 @@ class _RegistrationState extends State<Registration> {
   Future<String> _generateShopId() async {
     try {
       // Get count of existing pharmacies to generate sequential ID
-      QuerySnapshot existingPharmacies = await _firestore.collection('pharmacies').get();
+      QuerySnapshot existingPharmacies =
+          await _firestore.collection('pharmacies').get();
       int count = existingPharmacies.docs.length + 1;
-      
+
       // Generate shop ID with format: SHOP + 4-digit number (e.g., SHOP0001)
       String shopId = 'SHOP${count.toString().padLeft(4, '0')}';
-      
+
       // Check if this shop ID already exists
       QuerySnapshot existingShopId = await _firestore
           .collection('pharmacies')
           .where('shopId', isEqualTo: shopId)
           .get();
-      
+
       // If shop ID exists, increment until we find unique one
       while (existingShopId.docs.isNotEmpty) {
         count++;
@@ -412,7 +413,7 @@ class _RegistrationState extends State<Registration> {
             .where('shopId', isEqualTo: shopId)
             .get();
       }
-      
+
       return shopId;
     } catch (e) {
       // Fallback to timestamp-based ID if query fails
@@ -483,7 +484,8 @@ class _RegistrationState extends State<Registration> {
       // Show success message with generated shop ID
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Registration successful! Your Shop ID is: $autoShopId. You can now login.'),
+          content: Text(
+              'Registration successful! Your Shop ID is: $autoShopId. You can now login.'),
           duration: Duration(seconds: 5),
         ),
       );
@@ -830,11 +832,13 @@ class _RegistrationState extends State<Registration> {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white.withOpacity(0.3)),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline, color: Colors.white, size: 20),
+                          Icon(Icons.info_outline,
+                              color: Colors.white, size: 20),
                           SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -914,7 +918,7 @@ class _RegistrationState extends State<Registration> {
                                         ),
                                       ),
                                       if (_isLocationLoading)
-                                        Container(
+                                        SizedBox(
                                           width: 24,
                                           height: 24,
                                           child: CircularProgressIndicator(
@@ -924,7 +928,8 @@ class _RegistrationState extends State<Registration> {
                                                     Colors.white),
                                           ),
                                         )
-                                      else if (!_addressController.text.isEmpty)
+                                      else if (_addressController
+                                          .text.isNotEmpty)
                                         IconButton(
                                           icon: Icon(Icons.refresh,
                                               color: Colors.white),
@@ -1190,7 +1195,7 @@ class _RegistrationState extends State<Registration> {
                           value: true,
                           onChanged: (value) {},
                           checkColor: themeProvider.gradientColors[0],
-                          fillColor: MaterialStateProperty.all(Colors.white),
+                          fillColor: WidgetStateProperty.all(Colors.white),
                         ),
                         Expanded(
                           child: Text(

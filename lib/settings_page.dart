@@ -282,7 +282,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                                 trailing: Switch(
                                   value: themeProvider.isDarkMode,
-                                  activeColor: themeProvider.gradientColors[0],
+                                  activeThumbColor:
+                                      themeProvider.gradientColors[0],
                                   onChanged: (value) {
                                     themeProvider.toggleTheme();
                                   },
@@ -505,7 +506,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ),
                                 trailing: Switch(
                                   value: _autoBackupEnabled,
-                                  activeColor: themeProvider.gradientColors[0],
+                                  activeThumbColor:
+                                      themeProvider.gradientColors[0],
                                   onChanged: (value) async {
                                     if (_isDisposed) return;
 
@@ -695,8 +697,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
                                               // Show loading dialog with cancel option
                                               bool operationCancelled = false;
-                                              if (!mounted || _isDisposed)
+                                              if (!mounted || _isDisposed) {
                                                 return;
+                                              }
 
                                               showDialog(
                                                 context: mainPageContext,

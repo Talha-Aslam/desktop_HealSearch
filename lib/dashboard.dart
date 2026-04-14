@@ -313,34 +313,32 @@ class _DashboardState extends State<Dashboard> {
                         ),
                       )
                     else
-                      ..._recentActivities
-                          .map((activity) => Card(
-                                color: themeProvider.cardBackgroundColor,
-                                margin: const EdgeInsets.only(bottom: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                      ..._recentActivities.map((activity) => Card(
+                            color: themeProvider.cardBackgroundColor,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: _getActivityColor(
+                                    activity['color'], themeProvider),
+                                child: Icon(
+                                  _getActivityIcon(activity['icon']),
+                                  color: _getActivityIconColor(
+                                      activity['color'], themeProvider),
                                 ),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: _getActivityColor(
-                                        activity['color'], themeProvider),
-                                    child: Icon(
-                                      _getActivityIcon(activity['icon']),
-                                      color: _getActivityIconColor(
-                                          activity['color'], themeProvider),
-                                    ),
-                                  ),
-                                  title: Text(
-                                    activity['title'],
-                                    style: themeProvider.bodyTextStyleBold,
-                                  ),
-                                  subtitle: Text(
-                                    activity['subtitle'],
-                                    style: themeProvider.subtitleTextStyle,
-                                  ),
-                                ),
-                              ))
-                          .toList(),
+                              ),
+                              title: Text(
+                                activity['title'],
+                                style: themeProvider.bodyTextStyleBold,
+                              ),
+                              subtitle: Text(
+                                activity['subtitle'],
+                                style: themeProvider.subtitleTextStyle,
+                              ),
+                            ),
+                          )),
                   ],
                 ),
               ),

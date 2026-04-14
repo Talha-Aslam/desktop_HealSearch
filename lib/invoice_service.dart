@@ -176,7 +176,7 @@ class InvoiceService {
 
       // Truncate name if too long
       if (name.length > 23) {
-        name = name.substring(0, 20) + '...';
+        name = '${name.substring(0, 20)}...';
       }
 
       String itemNum = '${i + 1}'.padLeft(2);
@@ -455,18 +455,18 @@ class InvoiceService {
 
     String invoiceNum = 'Invoice #: ${invoice['invoiceNumber']}';
     String customerName = 'Customer: ${invoice['customerName']}';
-    buffer.writeln('${invoiceNum.padRight(35)}${customerName}');
+    buffer.writeln('${invoiceNum.padRight(35)}$customerName');
 
     String invoiceDate =
         'Date: ${DateFormat('MMM dd, yyyy - hh:mm a').format(invoice['date'])}';
     String customerPhone = invoice['customerPhone'] != 'N/A'
         ? 'Phone: ${invoice['customerPhone']}'
         : 'Phone: Not provided';
-    buffer.writeln('${invoiceDate.padRight(35)}${customerPhone}');
+    buffer.writeln('${invoiceDate.padRight(35)}$customerPhone');
 
     String invoiceStatus = 'Status: ${invoice['status']}';
     String paymentMethod = 'Payment: ${invoice['paymentMethod']}';
-    buffer.writeln('${invoiceStatus.padRight(35)}${paymentMethod}');
+    buffer.writeln('${invoiceStatus.padRight(35)}$paymentMethod');
 
     buffer.writeln();
 
@@ -486,7 +486,7 @@ class InvoiceService {
 
       String name = item['name'].toString();
       if (name.length > 24) {
-        name = name.substring(0, 21) + '...';
+        name = '${name.substring(0, 21)}...';
       }
       name = name.padRight(24);
 
