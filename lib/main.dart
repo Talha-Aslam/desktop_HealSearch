@@ -31,13 +31,13 @@ void main() async {
     print('Stack trace: ${details.stack}');
   };
 
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (e) {
-    print('Failed to initialize Firebase: $e');
-  }
+  // try {
+  //   await Firebase.initializeApp(
+  //     options: DefaultFirebaseOptions.currentPlatform,
+  //   );
+  // } catch (e) {
+  //   print('Failed to initialize Firebase: $e');
+  // }
 
   await createFilesAndFolders();
 

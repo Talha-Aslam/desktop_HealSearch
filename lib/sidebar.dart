@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/healsearch_branding.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});

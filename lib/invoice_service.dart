@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 import 'package:intl/intl.dart';
 
 class InvoiceService {
@@ -8,16 +8,17 @@ class InvoiceService {
   // Get recent invoices (from sales data)
   Future<List<Map<String, dynamic>>> getRecentInvoices({int limit = 10}) async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
-        throw Exception('User not logged in');
-      }
+      QuerySnapshot salesSnapshot;
 
-      // Query without orderBy to avoid composite index requirement
-      // We'll sort the results in memory instead
-      QuerySnapshot salesSnapshot = await _firestore
-          .collection('sales')
-          .where('userEmail', isEqualTo: _auth.currentUser!.email)
-          .get();
+      // If user is logged in, filter by email. Otherwise, fetch all (useful for testing/mock).
+      if (_auth.currentUser != null && _auth.currentUser!.email != null) {
+        salesSnapshot = await _firestore
+            .collection('sales')
+            .where('userEmail', isEqualTo: _auth.currentUser!.email)
+            .get();
+      } else {
+        salesSnapshot = await _firestore.collection('sales').get();
+      }
 
       List<Map<String, dynamic>> invoices = [];
 
@@ -31,7 +32,10 @@ class InvoiceService {
           'customerName': saleData['customerName'] ?? 'Walk-in Customer',
           'customerPhone': saleData['customerPhone'] ?? 'N/A',
           'date': saleData['createdAt'] != null
-              ? (saleData['createdAt'] as Timestamp).toDate()
+              ? (saleData['createdAt'] is Timestamp
+                  ? (saleData['createdAt'] as Timestamp).toDate()
+                  : DateTime.tryParse(saleData['createdAt'].toString()) ??
+                      DateTime.now())
               : DateTime.now(),
           'items': saleData['items'] ?? [],
           'subtotal': saleData['subtotal']?.toDouble() ?? 0.0,
@@ -86,7 +90,10 @@ class InvoiceService {
         'customerName': saleData['customerName'] ?? 'Walk-in Customer',
         'customerPhone': saleData['customerPhone'] ?? 'N/A',
         'date': saleData['createdAt'] != null
-            ? (saleData['createdAt'] as Timestamp).toDate()
+            ? (saleData['createdAt'] is Timestamp
+                ? (saleData['createdAt'] as Timestamp).toDate()
+                : DateTime.tryParse(saleData['createdAt'].toString()) ??
+                    DateTime.now())
             : DateTime.now(),
         'items': saleData['items'] ?? [],
         'subtotal': saleData['subtotal']?.toDouble() ?? 0.0,
@@ -424,60 +431,62 @@ class InvoiceService {
   // Generate professional printable invoice text (monospace formatting)
   String generatePrintableInvoiceText(Map<String, dynamic> invoice) {
     final StringBuffer buffer = StringBuffer();
+    final String eqLine = '=' * 60;
+    final String dashLine = '-' * 60;
 
     // Professional Header with company details
+    buffer.writeln(eqLine);
     buffer.writeln(
-        '================================================================');
+        '                         HEALSEARCH                         ');
     buffer.writeln(
-        '                        HEALSEARCH                              ');
+        '                  Digital Inventory System                  ');
     buffer.writeln(
-        '                   Digital Inventory System                    ');
+        '       Email: info@healsearch.com | Phone: 555-123-4567     ');
     buffer.writeln(
-        '         Email: info@healsearch.com | Phone: +1-555-123-4567   ');
-    buffer.writeln(
-        '                    www.healsearch.com                         ');
-    buffer.writeln(
-        '================================================================');
+        '                     www.healsearch.com                     ');
+    buffer.writeln(eqLine);
     buffer.writeln();
 
     // Invoice title
     buffer.writeln(
-        '                            INVOICE                            ');
-    buffer.writeln(
-        '================================================================');
+        '                          INVOICE                           ');
+    buffer.writeln(eqLine);
     buffer.writeln();
 
     // Invoice and customer details in organized sections
     buffer.writeln(
-        'INVOICE DETAILS                    CUSTOMER INFORMATION        ');
+        'INVOICE DETAILS               CUSTOMER INFORMATION          ');
     buffer.writeln(
-        '--------------------------------   ------------------------------');
+        '---------------------------   ------------------------------');
 
     String invoiceNum = 'Invoice #: ${invoice['invoiceNumber']}';
     String customerName = 'Customer: ${invoice['customerName']}';
-    buffer.writeln('${invoiceNum.padRight(35)}$customerName');
+    buffer.writeln('${invoiceNum.padRight(30)}$customerName');
 
     String invoiceDate =
         'Date: ${DateFormat('MMM dd, yyyy - hh:mm a').format(invoice['date'])}';
     String customerPhone = invoice['customerPhone'] != 'N/A'
         ? 'Phone: ${invoice['customerPhone']}'
         : 'Phone: Not provided';
-    buffer.writeln('${invoiceDate.padRight(35)}$customerPhone');
+    buffer.writeln('${invoiceDate.padRight(30)}$customerPhone');
 
     String invoiceStatus = 'Status: ${invoice['status']}';
     String paymentMethod = 'Payment: ${invoice['paymentMethod']}';
-    buffer.writeln('${invoiceStatus.padRight(35)}$paymentMethod');
+    buffer.writeln('${invoiceStatus.padRight(30)}$paymentMethod');
 
     buffer.writeln();
 
     // Items table with professional formatting
     buffer.writeln('ITEMS PURCHASED:');
-    buffer.writeln(
-        '================================================================');
-    buffer.writeln(
-        'No. Item Name                Qty    Unit Price      Total      ');
-    buffer.writeln(
-        '----------------------------------------------------------------');
+    buffer.writeln(eqLine);
+    String headerNo = 'No.'.padRight(4);
+    String headerName = 'Item Name'.padRight(24);
+    String headerQty = 'Qty'.padLeft(6);
+    String headerPrice = 'Unit Price'.padLeft(11);
+    String headerTotal = 'Total'.padLeft(11);
+    buffer
+        .writeln('$headerNo $headerName $headerQty $headerPrice $headerTotal');
+    buffer.writeln(dashLine);
 
     List<dynamic> items = invoice['items'] ?? [];
     for (int i = 0; i < items.length; i++) {
@@ -491,84 +500,79 @@ class InvoiceService {
       name = name.padRight(24);
 
       String qty = item['quantity'].toString().padLeft(6);
-      String price = '\$${item['price'].toStringAsFixed(2)}'.padLeft(11);
+      String price = '\$${(item['price'] as num).toDouble().toStringAsFixed(2)}'
+          .padLeft(11);
       String total =
-          '\$${(item['quantity'] * item['price']).toStringAsFixed(2)}'
+          '\$${((item['quantity'] as num) * (item['price'] as num)).toDouble().toStringAsFixed(2)}'
               .padLeft(11);
 
-      buffer.writeln('$itemNum$name $qty $price $total');
+      buffer.writeln('$itemNum $name $qty $price $total');
     }
 
-    buffer.writeln(
-        '----------------------------------------------------------------');
+    buffer.writeln(dashLine);
     buffer.writeln();
 
     // Payment summary with professional alignment
     buffer.writeln('PAYMENT SUMMARY:');
-    buffer.writeln(
-        '================================================================');
+    buffer.writeln(eqLine);
 
     String subtotalLabel = 'Subtotal:';
-    String subtotalValue = '\$${invoice['subtotal'].toStringAsFixed(2)}';
-    buffer.writeln('${subtotalLabel.padRight(50)}${subtotalValue.padLeft(14)}');
+    String subtotalValue =
+        '\$${(invoice['subtotal'] ?? 0).toDouble().toStringAsFixed(2)}';
+    buffer.writeln('${subtotalLabel.padRight(46)}${subtotalValue.padLeft(14)}');
 
-    if (invoice['discount'] > 0) {
+    if ((invoice['discount'] ?? 0) > 0) {
       String discountLabel = 'Discount Applied:';
-      String discountValue = '-\$${invoice['discount'].toStringAsFixed(2)}';
+      String discountValue =
+          '-\$${(invoice['discount'] ?? 0).toDouble().toStringAsFixed(2)}';
       buffer
-          .writeln('${discountLabel.padRight(50)}${discountValue.padLeft(14)}');
+          .writeln('${discountLabel.padRight(46)}${discountValue.padLeft(14)}');
     }
 
-    if (invoice['tax'] > 0) {
+    if ((invoice['tax'] ?? 0) > 0) {
       String taxLabel = 'Tax (10%):';
-      String taxValue = '\$${invoice['tax'].toStringAsFixed(2)}';
-      buffer.writeln('${taxLabel.padRight(50)}${taxValue.padLeft(14)}');
+      String taxValue =
+          '\$${(invoice['tax'] ?? 0).toDouble().toStringAsFixed(2)}';
+      buffer.writeln('${taxLabel.padRight(46)}${taxValue.padLeft(14)}');
     }
 
-    buffer.writeln(
-        '----------------------------------------------------------------');
+    buffer.writeln(dashLine);
     String totalLabel = 'TOTAL AMOUNT DUE:';
-    String finalTotal = '\$${invoice['total'].toStringAsFixed(2)}';
-    buffer.writeln('${totalLabel.padRight(50)}${finalTotal.padLeft(14)}');
-    buffer.writeln(
-        '================================================================');
+    String finalTotal =
+        '\$${(invoice['total'] ?? 0).toDouble().toStringAsFixed(2)}';
+    buffer.writeln('${totalLabel.padRight(46)}${finalTotal.padLeft(14)}');
+    buffer.writeln(eqLine);
     buffer.writeln();
 
     // Transaction details
     buffer.writeln('TRANSACTION DETAILS:');
-    buffer.writeln(
-        '----------------------------------------------------------------');
+    buffer.writeln(dashLine);
     buffer.writeln(
         'Transaction ID: ${invoice['id']?.toString().substring(0, 12).toUpperCase() ?? 'N/A'}');
     buffer.writeln('Total Items: ${items.length}');
     buffer.writeln(
-        'Total Quantity: ${items.fold(0, (sum, item) => sum + (item['quantity'] as int))}');
+        'Total Quantity: ${items.fold<int>(0, (sum, item) => sum + ((item['quantity'] ?? 0) as num).toInt())}');
     buffer.writeln();
 
     // Terms and conditions
     buffer.writeln('TERMS & CONDITIONS:');
-    buffer.writeln(
-        '----------------------------------------------------------------');
+    buffer.writeln(dashLine);
     buffer.writeln('• All sales are final unless otherwise specified');
     buffer.writeln('• Returns accepted within 30 days with original receipt');
     buffer.writeln('• For support or inquiries: support@healsearch.com');
     buffer.writeln();
 
     // Professional footer
+    buffer.writeln(eqLine);
     buffer.writeln(
-        '================================================================');
+        '             Thank you for choosing HealSearch!             ');
     buffer.writeln(
-        '                Thank you for choosing HealSearch!            ');
+        '            Your satisfaction is our top priority           ');
     buffer.writeln(
-        '                                                               ');
-    buffer.writeln(
-        '                Your satisfaction is our top priority            ');
-    buffer.writeln(
-        '                                                               ');
+        '                                                            ');
     buffer.writeln(
         'Generated: ${DateFormat('EEEE, MMMM dd, yyyy - hh:mm a').format(DateTime.now())}');
-    buffer.writeln(
-        '================================================================');
+    buffer.writeln(eqLine);
 
     return buffer.toString();
   }

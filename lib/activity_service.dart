@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class ActivityService {
   final FirebaseAuth _auth = FirebaseAuth.instance;

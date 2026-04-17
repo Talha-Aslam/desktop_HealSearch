@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 import 'dart:async';
 
 class StockAlertService extends ChangeNotifier {

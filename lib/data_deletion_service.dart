@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class DataDeletionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

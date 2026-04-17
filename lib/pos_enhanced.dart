@@ -5,6 +5,7 @@ import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/sidebar.dart';
 import 'package:desktop_search_a_holic/firebase_service.dart';
 import 'package:desktop_search_a_holic/sales_service.dart';
+import 'package:desktop_search_a_holic/invoice_service.dart';
 import 'package:quickalert/models/quickalert_type.dart';
 import 'package:quickalert/widgets/quickalert_dialog.dart';
 
@@ -285,7 +286,7 @@ class _POSState extends State<POS> {
     _calculateTotal();
   }
 
-  Future<void> _processOrder() async {
+  Future<void> _processOrder({bool generateInvoice = false}) async {
     // Validate order
     if (cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -322,12 +323,13 @@ class _POSState extends State<POS> {
         'discount': _discount,
         'tax': _tax,
         'total': _total,
-        'date': DateTime.now().toIso8601String(),
+        'date': DateTime.now(),
         'userEmail': _firebaseService.currentUser?.email ?? '',
       };
 
       // Save to Firestore using SalesService
-      await _salesService.addSale(orderData);
+      String saleId = await _salesService.addSale(orderData);
+      orderData['id'] = saleId; // Add ID for the invoice screen
 
       // Update product quantities in inventory
       for (var item in cart) {
@@ -362,6 +364,30 @@ class _POSState extends State<POS> {
         _tax = 0;
         _total = 0;
       });
+
+      // Reload products to update stock quantities on the POS screen
+      await _loadProducts();
+
+      // Provide invoice display if requested
+      if (generateInvoice) {
+        Map<String, dynamic> invoiceData = {
+          'id': saleId,
+          'invoiceNumber': saleId.length > 8
+              ? 'INV-${saleId.substring(0, 8).toUpperCase()}'
+              : 'INV-$saleId',
+          'customerName': orderData['customerName'] ?? 'Walk-in Customer',
+          'customerPhone': orderData['customerPhone'] ?? 'N/A',
+          'date': orderData['date'] ?? DateTime.now(),
+          'items': orderData['items'] ?? [],
+          'subtotal': orderData['subtotal']?.toDouble() ?? 0.0,
+          'tax': orderData['tax']?.toDouble() ?? 0.0,
+          'discount': orderData['discount']?.toDouble() ?? 0.0,
+          'total': orderData['total']?.toDouble() ?? 0.0,
+          'status': 'PAID',
+          'paymentMethod': orderData['paymentMethod'] ?? 'Cash',
+        };
+        _showInvoicePreviewDialog(invoiceData);
+      }
     } catch (e) {
       // Show error message
       QuickAlert.show(
@@ -375,6 +401,54 @@ class _POSState extends State<POS> {
         _isLoading = false;
       });
     }
+  }
+
+  void _showInvoicePreviewDialog(Map<String, dynamic> invoiceData) {
+    if (!mounted) return;
+    final invoiceService = InvoiceService();
+    String invoiceText =
+        invoiceService.generatePrintableInvoiceText(invoiceData);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Invoice Dialog'),
+        content: SizedBox(
+          width: 500,
+          height: 600,
+          child: SingleChildScrollView(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.white,
+              child: Text(
+                invoiceText,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          ElevatedButton.icon(
+            icon: const Icon(Icons.copy),
+            label: const Text("Copy Printer Text"),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: invoiceText));
+              if (mounted)
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Invoice copied to clipboard!')));
+            },
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   // Advanced search panel with filters
@@ -1081,46 +1155,93 @@ class _POSState extends State<POS> {
 
                                       const SizedBox(height: 12),
 
-                                      // Checkout button
-                                      SizedBox(
-                                        width: double.infinity,
-                                        height: 50,
-                                        child: ElevatedButton(
-                                          onPressed: cart.isEmpty || _isLoading
-                                              ? null
-                                              : _processOrder,
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor:
-                                                themeProvider.gradientColors[0],
-                                            foregroundColor: Colors.white,
-                                            disabledBackgroundColor:
-                                                Colors.grey,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
+                                      // Checkout buttons
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: SizedBox(
+                                              height: 50,
+                                              child: ElevatedButton(
+                                                onPressed: cart.isEmpty ||
+                                                        _isLoading
+                                                    ? null
+                                                    : () => _processOrder(
+                                                        generateInvoice: false),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: Colors.grey[
+                                                      700], // distinct subtle color
+                                                  foregroundColor: Colors.white,
+                                                  disabledBackgroundColor:
+                                                      Colors.grey,
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8)),
+                                                ),
+                                                child: _isLoading
+                                                    ? const SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child: CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                            valueColor:
+                                                                AlwaysStoppedAnimation<
+                                                                        Color>(
+                                                                    Colors
+                                                                        .white)))
+                                                    : const Text(
+                                                        'Process Order',
+                                                        style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold)),
+                                              ),
                                             ),
                                           ),
-                                          child: _isLoading
-                                              ? const SizedBox(
-                                                  width: 20,
-                                                  height: 20,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    valueColor:
-                                                        AlwaysStoppedAnimation<
-                                                                Color>(
-                                                            Colors.white),
-                                                  ),
-                                                )
-                                              : const Text(
-                                                  'Process Order',
-                                                  style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: SizedBox(
+                                              height: 50,
+                                              child: ElevatedButton(
+                                                onPressed: cart.isEmpty ||
+                                                        _isLoading
+                                                    ? null
+                                                    : () => _processOrder(
+                                                        generateInvoice: true),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: themeProvider
+                                                      .gradientColors[0],
+                                                  foregroundColor: Colors.white,
+                                                  disabledBackgroundColor:
+                                                      Colors.grey,
+                                                  shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              8)),
                                                 ),
-                                        ),
+                                                child: _isLoading
+                                                    ? const SizedBox(
+                                                        width: 20,
+                                                        height: 20,
+                                                        child: CircularProgressIndicator(
+                                                            strokeWidth: 2,
+                                                            valueColor:
+                                                                AlwaysStoppedAnimation<
+                                                                        Color>(
+                                                                    Colors
+                                                                        .white)))
+                                                    : const Text(
+                                                        'Process & Invoice',
+                                                        style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .bold)),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
