@@ -1,5 +1,4 @@
 import 'package:desktop_search_a_holic/mock_firebase.dart';
-import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class ReportsService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -8,7 +7,7 @@ class ReportsService {
   // Generate real-time sales report
   Future<Map<String, dynamic>> generateSalesReport() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -93,7 +92,7 @@ class ReportsService {
   // Generate real-time inventory report
   Future<Map<String, dynamic>> generateInventoryReport() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -146,7 +145,7 @@ class ReportsService {
   // Generate customer insights report
   Future<Map<String, dynamic>> generateCustomerReport() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -216,7 +215,7 @@ class ReportsService {
   // Generate financial report
   Future<Map<String, dynamic>> generateFinancialReport() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 

@@ -17,12 +17,14 @@ class FirebaseAuth {
 
   User? get currentUser => _currentUser;
 
-  Future<UserCredential> signInWithEmailAndPassword({required String email, required String password}) async {
+  Future<UserCredential> signInWithEmailAndPassword(
+      {required String email, required String password}) async {
     _currentUser = User(uid: 'mvp_uid_123', email: email.trim());
     return UserCredential(user: _currentUser!);
   }
 
-  Future<UserCredential> createUserWithEmailAndPassword({required String email, required String password}) async {
+  Future<UserCredential> createUserWithEmailAndPassword(
+      {required String email, required String password}) async {
     _currentUser = User(uid: 'mvp_uid_123', email: email.trim());
     return UserCredential(user: _currentUser!);
   }
@@ -57,7 +59,7 @@ class FirebaseFirestore {
       final docDir = await getApplicationDocumentsDirectory();
       final folder = Directory('${docDir.path}/SeachAHolic');
       if (!folder.existsSync()) folder.createSync();
-      
+
       final dbFile = File('${folder.path}/firestore_mock.json');
       if (dbFile.existsSync()) {
         final content = dbFile.readAsStringSync();
@@ -82,7 +84,7 @@ class FirebaseFirestore {
       final docDir = await getApplicationDocumentsDirectory();
       final folder = Directory('${docDir.path}/SeachAHolic');
       if (!folder.existsSync()) folder.createSync();
-      
+
       final dbFile = File('${folder.path}/firestore_mock.json');
       print('DEBUG mock_firestore: Saving to ${dbFile.path}');
       dbFile.writeAsStringSync(json.encode(_data));
@@ -95,13 +97,14 @@ class FirebaseFirestore {
   CollectionReference collection(String path) {
     return CollectionReference(path, this);
   }
-  
+
   WriteBatch batch() => WriteBatch();
 }
 
 class WriteBatch {
   Future<void> commit() async {}
-  void set(DocumentReference document, Map<String, dynamic> data, [SetOptions? options]) {}
+  void set(DocumentReference document, Map<String, dynamic> data,
+      [SetOptions? options]) {}
   void update(DocumentReference document, Map<String, dynamic> data) {}
   void delete(DocumentReference document) {}
 }
@@ -112,7 +115,8 @@ class CollectionReference {
   CollectionReference(this.path, this._firestore);
 
   DocumentReference doc([String? id]) {
-    return DocumentReference(path, id ?? DateTime.now().millisecondsSinceEpoch.toString(), _firestore);
+    return DocumentReference(path,
+        id ?? DateTime.now().millisecondsSinceEpoch.toString(), _firestore);
   }
 
   Future<DocumentReference> add(Map<String, dynamic> data) async {
@@ -121,10 +125,19 @@ class CollectionReference {
     return ref;
   }
 
-  Query where(String field, {dynamic isEqualTo, dynamic isGreaterThanOrEqualTo, dynamic isLessThanOrEqualTo, dynamic isLessThan}) {
-    return Query(path, _firestore)..where(field, isEqualTo: isEqualTo, isGreaterThanOrEqualTo: isGreaterThanOrEqualTo, isLessThanOrEqualTo: isLessThanOrEqualTo, isLessThan: isLessThan);
+  Query where(String field,
+      {dynamic isEqualTo,
+      dynamic isGreaterThanOrEqualTo,
+      dynamic isLessThanOrEqualTo,
+      dynamic isLessThan}) {
+    return Query(path, _firestore)
+      ..where(field,
+          isEqualTo: isEqualTo,
+          isGreaterThanOrEqualTo: isGreaterThanOrEqualTo,
+          isLessThanOrEqualTo: isLessThanOrEqualTo,
+          isLessThan: isLessThan);
   }
-  
+
   Query orderBy(String field, {bool descending = false}) {
     return Query(path, _firestore)..orderBy(field, descending: descending);
   }
@@ -136,7 +149,10 @@ class CollectionReference {
   Future<QuerySnapshot> get() async {
     await _firestore._initStorage();
     final colData = _firestore._data[path] ?? {};
-    final docs = colData.entries.map((e) => QueryDocumentSnapshot(e.key, e.value, reference: doc(e.key))).toList();
+    final docs = colData.entries
+        .map(
+            (e) => QueryDocumentSnapshot(e.key, e.value, reference: doc(e.key)))
+        .toList();
     return QuerySnapshot(docs);
   }
 }
@@ -153,8 +169,12 @@ class DocumentReference {
     if (!_firestore._data.containsKey(_collectionPath)) {
       _firestore._data[_collectionPath] = {};
     }
-    if (options?.merge == true && _firestore._data[_collectionPath]!.containsKey(id)) {
-      _firestore._data[_collectionPath]![id] = {..._firestore._data[_collectionPath]![id]!, ...data};
+    if (options?.merge == true &&
+        _firestore._data[_collectionPath]!.containsKey(id)) {
+      _firestore._data[_collectionPath]![id] = {
+        ..._firestore._data[_collectionPath]![id]!,
+        ...data
+      };
     } else {
       _firestore._data[_collectionPath]![id] = data;
     }
@@ -197,8 +217,9 @@ class DocumentSnapshot {
 class QueryDocumentSnapshot extends DocumentSnapshot {
   @override
   final DocumentReference reference;
-  
-  QueryDocumentSnapshot(String id, Map<String, dynamic> data, {required this.reference}) : super(id, data, exists: true, reference: reference);
+
+  QueryDocumentSnapshot(super.id, super.data, {required this.reference})
+      : super(exists: true, reference: reference);
 }
 
 class QuerySnapshot {
@@ -209,7 +230,7 @@ class QuerySnapshot {
 class Query {
   final String _collectionPath;
   final FirebaseFirestore _firestore;
-  
+
   final List<Map<String, dynamic>> _conditions = [];
   String? orderByField;
   bool descending = false;
@@ -217,7 +238,11 @@ class Query {
 
   Query(this._collectionPath, this._firestore);
 
-  Query where(String field, {dynamic isEqualTo, dynamic isGreaterThanOrEqualTo, dynamic isLessThanOrEqualTo, dynamic isLessThan}) {
+  Query where(String field,
+      {dynamic isEqualTo,
+      dynamic isGreaterThanOrEqualTo,
+      dynamic isLessThanOrEqualTo,
+      dynamic isLessThan}) {
     _conditions.add({
       'field': field,
       'isEqualTo': isEqualTo,
@@ -229,26 +254,28 @@ class Query {
   }
 
   Query orderBy(String field, {bool descending = false}) {
-    this.orderByField = field;
+    orderByField = field;
     this.descending = descending;
     return this;
   }
 
   Query limit(int count) {
-    this.limitCount = count;
+    limitCount = count;
     return this;
   }
 
   Future<QuerySnapshot> get() async {
     await _firestore._initStorage();
     final colData = _firestore._data[_collectionPath] ?? {};
-    
+
     var filtered = colData.entries.toList();
-    
+
     for (var condition in _conditions) {
       final field = condition['field'];
       if (condition['isEqualTo'] != null) {
-        filtered = filtered.where((e) => e.value[field] == condition['isEqualTo']).toList();
+        filtered = filtered
+            .where((e) => e.value[field] == condition['isEqualTo'])
+            .toList();
       }
       if (condition['isGreaterThanOrEqualTo'] != null) {
         filtered = filtered.where((e) {
@@ -272,7 +299,7 @@ class Query {
         }).toList();
       }
     }
-    
+
     if (orderByField != null) {
       filtered.sort((a, b) {
         var valA = a.value[orderByField!];
@@ -286,7 +313,10 @@ class Query {
       filtered = filtered.sublist(0, limitCount!);
     }
 
-    final docs = filtered.map((e) => QueryDocumentSnapshot(e.key, e.value, reference: _firestore.collection(_collectionPath).doc(e.key))).toList();
+    final docs = filtered
+        .map((e) => QueryDocumentSnapshot(e.key, e.value,
+            reference: _firestore.collection(_collectionPath).doc(e.key)))
+        .toList();
     return QuerySnapshot(docs);
   }
 
@@ -312,12 +342,12 @@ class Timestamp {
   final int seconds;
   final int nanoseconds;
   Timestamp(this.seconds, this.nanoseconds);
-  
+
   static Timestamp now() {
     final dt = DateTime.now();
     return Timestamp(dt.millisecondsSinceEpoch ~/ 1000, 0);
   }
-  
+
   DateTime toDate() {
     return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
   }

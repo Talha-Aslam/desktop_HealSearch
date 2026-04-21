@@ -1,3 +1,5 @@
+import 'package:desktop_search_a_holic/main.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
@@ -27,28 +29,32 @@ class _ProductState extends State<Product> {
 
   Future<void> _loadProductsFromFirestore() async {
     try {
-      if (!mounted) return; // Check mounted before starting
+      if (!mounted) return;
 
       setState(() {
         _isLoading = true;
       });
 
-      print('🔄 Loading products from Firestore...');
-      List<Map<String, dynamic>> loadedProducts =
-          await _firebaseService.getProducts();
+      print('🔄 Loading products from local DB...');
+      final localMedicines = await appDb.select(appDb.medicines).get();
 
-      if (!mounted) return; // Check mounted after async operation
+      if (!mounted) return;
 
-      // Debug logging
-      print('Products loaded from Firestore: ${loadedProducts.length}');
-      for (var product in loadedProducts) {
-        print(
-            'Product: ${product['name']}, ID: ${product['id']}, Created: ${product['createdAt']}');
-      }
+      List<Map<String, dynamic>> loadedProducts = localMedicines.map((m) {
+        return {
+          'id': m.id.toString(),
+          'name': m.name,
+          'price': m.price,
+          'quantity': m.stock,
+          'category': m.category ?? 'Other',
+          'expiry': m.expiryDate != null
+              ? DateFormat('yyyy-MM-dd').format(m.expiryDate!)
+              : '',
+        };
+      }).toList();
 
       setState(() {
         products = loadedProducts;
-        // Apply current search filter to new products
         if (_searchController.text.isEmpty) {
           filteredProducts = loadedProducts;
         } else {
@@ -57,105 +63,25 @@ class _ProductState extends State<Product> {
         _isLoading = false;
       });
 
-      print(
-          'Products state updated - total: ${products.length}, filtered: ${filteredProducts.length}');
-      print('🔄 _loadProductsFromFirestore completed successfully');
+      print('Products state updated - total: ${products.length}');
     } catch (e) {
-      if (!mounted) return; // Check mounted before setState
+      if (!mounted) return;
 
       setState(() {
         _isLoading = false;
       });
 
-      print('❌ Error loading products from Firestore: $e');
+      print('❌ Error loading products from local DB: $e');
 
-      // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load products: ${e.toString()}'),
             backgroundColor: Colors.red,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: _loadProductsFromFirestore,
-            ),
           ),
         );
-
-        // Load dummy data as fallback
-        _loadDummyProducts();
       }
     }
-  }
-
-  void _loadDummyProducts() {
-    // Get current user email for dummy data
-    String? userEmail = _firebaseService.currentUser?.email;
-
-    // Dummy data for products with more details (fallback data)
-    var dummyProducts = [
-      {
-        "id": "dummy_1", // Add dummy IDs for fallback data
-        "name": "Paracetamol 500mg",
-        "price": 100,
-        "quantity": 10,
-        "category": "Medicine",
-        "expiry": "2025-12-31",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_2",
-        "name": "Aspirin 300mg",
-        "price": 200,
-        "quantity": 5,
-        "category": "Medicine",
-        "expiry": "2026-05-15",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_3",
-        "name": "Vitamins C",
-        "price": 150,
-        "quantity": 20,
-        "category": "Supplements",
-        "expiry": "2027-08-22",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_4",
-        "name": "Cough Syrup",
-        "price": 85,
-        "quantity": 15,
-        "category": "Medicine",
-        "expiry": "2025-10-30",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_5",
-        "name": "Bandages",
-        "price": 50,
-        "quantity": 30,
-        "category": "First Aid",
-        "expiry": "2028-01-01",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_6",
-        "name": "Hand Sanitizer",
-        "price": 65,
-        "quantity": 25,
-        "category": "Hygiene",
-        "expiry": "2026-06-18",
-        "userEmail": userEmail,
-      },
-    ];
-
-    setState(() {
-      products = dummyProducts;
-      filteredProducts = dummyProducts;
-      _isLoading = false;
-    });
   }
 
   void _searchProducts(String query) {

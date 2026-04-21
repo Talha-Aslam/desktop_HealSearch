@@ -7,7 +7,7 @@ class ActivityService {
   // Get recent activities for the current user
   Future<List<Map<String, dynamic>>> getRecentActivities() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 

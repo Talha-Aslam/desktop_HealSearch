@@ -1,5 +1,8 @@
 // Add Product Page
 
+import 'package:desktop_search_a_holic/main.dart';
+import 'package:desktop_search_a_holic/data/database.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
@@ -7,7 +10,6 @@ import 'package:desktop_search_a_holic/sidebar.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
-import 'package:desktop_search_a_holic/firebase_service.dart';
 
 class AddProduct extends StatefulWidget {
   const AddProduct({super.key});
@@ -27,7 +29,6 @@ class _AddProduct extends State<AddProduct> {
   GlobalKey<FormState> formkey = GlobalKey<FormState>();
   TextEditingController dateinput = TextEditingController();
   bool _isLoading = false;
-  final FirebaseService _firebaseService = FirebaseService();
 
   // Define categories list once to avoid duplicates
   static const List<String> _categories = [
@@ -57,41 +58,27 @@ class _AddProduct extends State<AddProduct> {
     });
 
     try {
-      // Get current user for shop ID
-      final user = _firebaseService.currentUser;
-      String? shopId;
-
-      // Get shop ID from user profile if available
-      if (user != null) {
-        try {
-          final userData = await _firebaseService.getUserData(user.uid);
-          if (userData.exists) {
-            final data = userData.data() as Map<String, dynamic>;
-            shopId = data['shopId'];
-          }
-        } catch (e) {
-          print('Error getting shop ID: $e');
+      // Create product data map locally using Drift
+      DateTime? parsedExpiry;
+      try {
+        // Handle potentially different date formats, or fallback
+        if (dateinput.text.isNotEmpty) {
+          parsedExpiry = DateFormat('yyyy-MM-dd').parse(dateinput.text.trim());
         }
+      } catch (e) {
+        print('Error parsing expiry date: $e');
       }
 
-      // Create product data map
-      Map<String, dynamic> productData = {
-        'name': _productName.text.trim(),
-        'price': double.tryParse(_productPrice.text.trim()) ?? 0.0,
-        'quantity': int.tryParse(_productQty.text.trim()) ?? 0,
-        'expiry': dateinput.text.trim(),
-        'category': _productCategory.text.trim(),
-        'userEmail': _firebaseService.currentUser?.email ?? '',
-        'createdAt': DateTime.now().toIso8601String(),
-      };
-
-      // Add shop ID to product data if available
-      if (shopId != null && shopId.isNotEmpty) {
-        productData['shopId'] = shopId;
-      }
-
-      // Save to Firestore using FirebaseService
-      await _firebaseService.addProduct(productData);
+      await appDb.into(appDb.medicines).insert(
+            MedicinesCompanion(
+              name: drift.Value(_productName.text.trim()),
+              price: drift.Value(
+                  double.tryParse(_productPrice.text.trim()) ?? 0.0),
+              stock: drift.Value(int.tryParse(_productQty.text.trim()) ?? 0),
+              category: drift.Value(_productCategory.text.trim()),
+              expiryDate: drift.Value(parsedExpiry),
+            ),
+          );
 
       if (!mounted) return; // Check mounted after async operation
 

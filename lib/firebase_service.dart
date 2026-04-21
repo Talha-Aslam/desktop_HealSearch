@@ -1,5 +1,4 @@
 import 'package:desktop_search_a_holic/mock_firebase.dart';
-import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class FirebaseService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -212,7 +211,7 @@ class FirebaseService {
   Future<List<Map<String, dynamic>>> getProducts() async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -240,7 +239,7 @@ class FirebaseService {
   Future<List<Map<String, dynamic>>> getProductsByShopId(String shopId) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -267,7 +266,7 @@ class FirebaseService {
   // Get products stream for real-time updates (filtered by current user)
   Stream<List<Map<String, dynamic>>> getProductsStream() {
     // Check if user is logged in
-    if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+    if (_auth.currentUser == null) {
       return Stream.value([]); // Return empty stream if no user
     }
 
@@ -290,7 +289,7 @@ class FirebaseService {
   // Get products stream for real-time updates by shop ID
   Stream<List<Map<String, dynamic>>> getProductsStreamByShopId(String shopId) {
     // Check if user is logged in
-    if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+    if (_auth.currentUser == null) {
       return Stream.value([]); // Return empty stream if no user
     }
 
@@ -315,7 +314,7 @@ class FirebaseService {
       String productId, Map<String, dynamic> productData) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -368,7 +367,7 @@ class FirebaseService {
   Future<void> deleteProduct(String productId) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -396,7 +395,7 @@ class FirebaseService {
   Future<Map<String, dynamic>?> getProduct(String productId) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 

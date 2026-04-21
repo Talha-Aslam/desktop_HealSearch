@@ -1,4 +1,3 @@
-import 'package:desktop_search_a_holic/chatBot.dart';
 import 'package:desktop_search_a_holic/imports.dart';
 import 'package:desktop_search_a_holic/addProduct.dart';
 import 'package:desktop_search_a_holic/editProduct.dart';
@@ -21,15 +20,48 @@ import 'package:desktop_search_a_holic/stock_alert_service.dart';
 import 'package:desktop_search_a_holic/stock_alerts_page.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:desktop_search_a_holic/data/database.dart' hide Sales;
+import 'package:desktop_search_a_holic/data/sync_service.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
+
+// IMPORTANT: Global reference to our local Drift database
+late final AppDatabase appDb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
 
   // Set up global error handling
   FlutterError.onError = (FlutterErrorDetails details) {
     print('Flutter Error: ${details.exception}');
     print('Stack trace: ${details.stack}');
   };
+
+  // --- 1. INITIALIZE SUPABASE CLOUD ---
+  final supabaseUrl = dotenv.env['SUPABASE_URL'];
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  if (supabaseUrl == null || supabaseAnonKey == null) {
+    throw Exception('Missing SUPABASE_URL or SUPABASE_ANON_KEY in .env');
+  }
+
+  try {
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+    );
+    print('Supabase initialized successfully');
+  } catch (e) {
+    print('Failed to initialize Supabase: $e');
+  }
+
+  // --- 2. INITIALIZE DRIFT LOCAL DB ---
+  appDb = AppDatabase();
+
+  // --- 3. START BACKGROUND SYNC ---
+  final syncService = SupabaseSyncService(appDb, Supabase.instance.client);
+  syncService.startSync(interval: const Duration(minutes: 1));
 
   // try {
   //   await Firebase.initializeApp(
@@ -50,6 +82,10 @@ void main() async {
         ChangeNotifierProvider<StockAlertService>(
           create: (_) => StockAlertService(),
         ),
+        ChangeNotifierProvider<TenantProvider>(
+          // <-- Add this Provider
+          create: (_) => TenantProvider(),
+        ),
       ],
       child: const MyApp(),
     ),
@@ -69,13 +105,11 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
       builder: (context, child) {
-        // Wrap the entire app in error handling and proper focus scope
+        // Handle app-wide errors centrally
         return Builder(
           builder: (context) {
             try {
-              return FocusScope(
-                child: child ?? const SizedBox.shrink(),
-              );
+              return child ?? const SizedBox.shrink();
             } catch (e) {
               print('Error in app builder: $e');
               return MaterialApp(
@@ -118,7 +152,6 @@ class MyApp extends StatelessWidget {
         },
         '/invoices': (context) => const Invoice(),
         '/reports': (context) => const Reports(),
-        '/chatBot': (context) => ChatBotPage(),
         '/login': (context) => const Login(),
         '/newOrder': (context) => const NewOrder(),
         '/registration': (context) => const Registration(),

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:desktop_search_a_holic/sidebar.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
-import 'package:desktop_search_a_holic/sales_service.dart';
-import 'package:desktop_search_a_holic/activity_service.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
 import 'package:desktop_search_a_holic/stock_alert_service.dart';
 import 'package:desktop_search_a_holic/stock_alerts_widget.dart';
+import 'package:desktop_search_a_holic/main.dart'; // Add for appDb
+import 'package:drift/drift.dart' as drift;
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -15,13 +16,12 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> {
-  final SalesService _salesService = SalesService();
-  final ActivityService _activityService = ActivityService();
   Map<String, dynamic> _salesStats = {
     'totalSalesAmount': 0.0,
     'totalOrders': 0,
     'uniqueCustomers': 0,
     'topSellingProduct': 'N/A',
+    'totalProducts': 0,
     'topSellingCount': 0,
   };
   List<Map<String, dynamic>> _recentActivities = [];
@@ -53,16 +53,94 @@ class _DashboardState extends State<Dashboard> {
         _isLoading = true;
       });
 
-      // Load sales stats and activities in parallel
-      final results = await Future.wait([
-        _salesService.getSalesStats(),
-        _activityService.getRecentActivities(),
-      ]);
+      // 0. Get Pharmacy ID
+      final tenant = Provider.of<TenantProvider>(context, listen: false);
+      final pharmacyId = tenant.pharmacyId;
+
+      if (pharmacyId == null) {
+        throw Exception('No active pharmacy session');
+      }
+
+      // 1. Total Products
+      final productsStream = await (appDb.select(appDb.medicines)
+            ..where((t) => t.pharmacyId.equals(pharmacyId)))
+          .get();
+      final totalProducts = productsStream.length;
+
+      // 2. Total Orders
+      final salesStream = await (appDb.select(appDb.sales)
+            ..where((t) => t.pharmacyId.equals(pharmacyId)))
+          .get();
+      final totalOrders = salesStream.length;
+
+      // 3. Total Sales Amount
+      double totalSalesAmount = 0.0;
+      for (var sale in salesStream) {
+        totalSalesAmount += sale.totalAmount;
+      }
+
+      // 4. Generate Recent Activities from Drift Data
+      List<Map<String, dynamic>> combinedActivities = [];
+
+      // Get recent products (ordered by ID descending)
+      final recentProducts = await (appDb.select(appDb.medicines)
+            ..where((t) => t.pharmacyId.equals(pharmacyId))
+            ..orderBy([
+              (t) => drift.OrderingTerm(
+                  expression: t.id, mode: drift.OrderingMode.desc)
+            ])
+            ..limit(5))
+          .get();
+
+      for (var prod in recentProducts) {
+        combinedActivities.add({
+          'title': 'New Product Added',
+          'subtitle': '${prod.name} (Stock: ${prod.stock})',
+          'icon': 'inventory',
+          'color': 'blue',
+          'timestamp': DateTime
+              .now(), // Fallback sort field since Medicine doesn't have createdAt
+        });
+      }
+
+      // Get recent sales (ordered by createdAt descending)
+      final recentSales = await (appDb.select(appDb.sales)
+            ..where((t) => t.pharmacyId.equals(pharmacyId))
+            ..orderBy([
+              (t) => drift.OrderingTerm(
+                  expression: t.createdAt, mode: drift.OrderingMode.desc)
+            ])
+            ..limit(5))
+          .get();
+
+      for (var sale in recentSales) {
+        combinedActivities.add({
+          'title': 'Sale Processed',
+          'subtitle':
+              'Invoice #${sale.id} - \$${sale.totalAmount.toStringAsFixed(2)}',
+          'icon': 'payment',
+          'color': 'green',
+          'timestamp': sale.createdAt,
+        });
+      }
+
+      // Sort combined activities by timestamp descending
+      combinedActivities
+          .sort((a, b) => b['timestamp'].compareTo(a['timestamp']));
+
+      // Only keep the top 6 most recent mixed activities
+      if (combinedActivities.length > 6) {
+        combinedActivities = combinedActivities.sublist(0, 6);
+      }
 
       if (!mounted) return;
       setState(() {
-        _salesStats = results[0] as Map<String, dynamic>;
-        _recentActivities = results[1] as List<Map<String, dynamic>>;
+        _salesStats['totalProducts'] = totalProducts;
+        _salesStats['totalOrders'] = totalOrders;
+        _salesStats['totalSalesAmount'] = totalSalesAmount;
+        _salesStats['uniqueCustomers'] =
+            totalOrders; // Proxy until customers are added
+        _recentActivities = combinedActivities;
         _isLoading = false;
       });
     } catch (e) {
@@ -251,35 +329,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Activity Cards
-                    Card(
-                      color: themeProvider.cardBackgroundColor,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: themeProvider.isDarkMode
-                              ? Colors.blue.shade800
-                              : Colors.blue.shade100,
-                          child: Icon(
-                            Icons.shopping_cart,
-                            color: themeProvider.isDarkMode
-                                ? Colors.blue.shade100
-                                : Colors.blue.shade800,
-                          ),
-                        ),
-                        title: Text(
-                          'New Product Added',
-                          style: themeProvider.bodyTextStyleBold,
-                        ),
-                        subtitle: Text(
-                          'Paracetamol 500mg - 10 minutes ago',
-                          style: themeProvider.subtitleTextStyle,
-                        ),
-                      ),
-                    ), // Activities list
+                    // Activities list
                     if (_recentActivities.isEmpty)
                       Card(
                         color: themeProvider.cardBackgroundColor,

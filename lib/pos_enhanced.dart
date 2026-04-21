@@ -1,10 +1,12 @@
+import 'package:desktop_search_a_holic/main.dart';
+import 'package:desktop_search_a_holic/data/database.dart';
+import 'package:drift/drift.dart' as drift;
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/sidebar.dart';
-import 'package:desktop_search_a_holic/firebase_service.dart';
-import 'package:desktop_search_a_holic/sales_service.dart';
 import 'package:desktop_search_a_holic/invoice_service.dart';
 import 'package:quickalert/models/quickalert_type.dart';
 import 'package:quickalert/widgets/quickalert_dialog.dart';
@@ -17,8 +19,6 @@ class POS extends StatefulWidget {
 }
 
 class _POSState extends State<POS> {
-  final FirebaseService _firebaseService = FirebaseService();
-  final SalesService _salesService = SalesService();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _customerNameController = TextEditingController();
   final TextEditingController _customerPhoneController =
@@ -94,8 +94,22 @@ class _POSState extends State<POS> {
     });
 
     try {
-      List<Map<String, dynamic>> loadedProducts =
-          await _firebaseService.getProducts();
+      final localMedicines = await appDb.select(appDb.medicines).get();
+
+      List<Map<String, dynamic>> loadedProducts = localMedicines.map((m) {
+        return {
+          'id': m.id.toString(),
+          'name': m.name,
+          'price': m.price,
+          'quantity': m.stock,
+          'category': m.category ?? 'Other',
+          'expiry': m.expiryDate != null
+              ? DateFormat('yyyy-MM-dd').format(m.expiryDate!)
+              : '',
+        };
+      }).toList();
+
+      if (!mounted) return;
 
       setState(() {
         products = loadedProducts;
@@ -105,83 +119,18 @@ class _POSState extends State<POS> {
 
       _extractCategories();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load products: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-
-        // Load dummy data as fallback
-        _loadDummyProducts();
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load products: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-  }
-
-  void _loadDummyProducts() {
-    // Get current user email for dummy data
-    String? userEmail = _firebaseService.currentUser?.email;
-
-    // Dummy data for products with more details
-    var dummyProducts = [
-      {
-        "id": "1",
-        "name": "Paracetamol 500mg",
-        "price": 100,
-        "quantity": 100,
-        "category": "Medicine",
-        "expiry": "2025-12-31",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "2",
-        "name": "Aspirin 300mg",
-        "price": 200,
-        "quantity": 50,
-        "category": "Medicine",
-        "expiry": "2026-05-15",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "3",
-        "name": "Vitamins C",
-        "price": 150,
-        "quantity": 200,
-        "category": "Supplements",
-        "expiry": "2027-08-22",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "4",
-        "name": "Cough Syrup",
-        "price": 85,
-        "quantity": 30,
-        "category": "Medicine",
-        "expiry": "2025-10-30",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "5",
-        "name": "Bandages",
-        "price": 50,
-        "quantity": 100,
-        "category": "First Aid",
-        "expiry": "2028-01-01",
-        "userEmail": userEmail,
-      },
-    ];
-
-    setState(() {
-      products = dummyProducts;
-      filteredProducts = dummyProducts;
-    });
-
-    _extractCategories();
   }
 
   // Enhanced search with multiple filters
@@ -303,8 +252,36 @@ class _POSState extends State<POS> {
     });
 
     try {
-      // Create order data
+      // 1. Insert order/sale into local Drift database
+      final saleIdNum = await appDb.into(appDb.sales).insert(
+            SalesCompanion(
+              totalAmount: drift.Value(_total),
+            ),
+          );
+      String saleId = saleIdNum.toString();
+
+      // 2. Update product stock (decrease stock) in Drift
+      for (var item in cart) {
+        int productId = int.tryParse(item['id'].toString()) ?? 0;
+        int soldQuantity = item['quantity'];
+
+        if (productId > 0) {
+          final p = await (appDb.select(appDb.medicines)
+                ..where((t) => t.id.equals(productId)))
+              .getSingleOrNull();
+          if (p != null) {
+            await (appDb.update(appDb.medicines)
+                  ..where((t) => t.id.equals(productId)))
+                .write(MedicinesCompanion(
+                    stock: drift.Value(p.stock - soldQuantity)));
+          }
+        }
+      }
+
+      if (!mounted) return;
+
       Map<String, dynamic> orderData = {
+        'id': saleId,
         'customerName': _customerNameController.text.isEmpty
             ? 'Walk-in Customer'
             : _customerNameController.text.trim(),
@@ -324,26 +301,7 @@ class _POSState extends State<POS> {
         'tax': _tax,
         'total': _total,
         'date': DateTime.now(),
-        'userEmail': _firebaseService.currentUser?.email ?? '',
       };
-
-      // Save to Firestore using SalesService
-      String saleId = await _salesService.addSale(orderData);
-      orderData['id'] = saleId; // Add ID for the invoice screen
-
-      // Update product quantities in inventory
-      for (var item in cart) {
-        // Get the current product from inventory
-        String productId = item['id'];
-        int soldQuantity = item['quantity'];
-
-        try {
-          // Update product quantity using SalesService
-          await _salesService.updateProductInventory(productId, soldQuantity);
-        } catch (e) {
-          // Continue with the next item even if this one fails
-        }
-      }
 
       // Show success message
       QuickAlert.show(
@@ -437,9 +395,10 @@ class _POSState extends State<POS> {
             label: const Text("Copy Printer Text"),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: invoiceText));
-              if (mounted)
+              if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('Invoice copied to clipboard!')));
+              }
             },
           ),
           TextButton(

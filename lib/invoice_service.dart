@@ -1,5 +1,4 @@
 import 'package:desktop_search_a_holic/mock_firebase.dart';
-import 'package:desktop_search_a_holic/mock_firebase.dart';
 import 'package:intl/intl.dart';
 
 class InvoiceService {
@@ -11,7 +10,7 @@ class InvoiceService {
       QuerySnapshot salesSnapshot;
 
       // If user is logged in, filter by email. Otherwise, fetch all (useful for testing/mock).
-      if (_auth.currentUser != null && _auth.currentUser!.email != null) {
+      if (_auth.currentUser != null) {
         salesSnapshot = await _firestore
             .collection('sales')
             .where('userEmail', isEqualTo: _auth.currentUser!.email)
@@ -66,7 +65,7 @@ class InvoiceService {
   // Get a specific invoice by sale ID
   Future<Map<String, dynamic>?> getInvoiceById(String saleId) async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 

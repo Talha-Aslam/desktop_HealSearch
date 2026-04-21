@@ -1,5 +1,4 @@
 import 'package:desktop_search_a_holic/mock_firebase.dart';
-import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class FirebaseServices {
   // Authentication functions

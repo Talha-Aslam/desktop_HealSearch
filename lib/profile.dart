@@ -40,7 +40,7 @@ class _ProfileState extends State<Profile> {
 
       if (user != null) {
         // Load email from current user
-        _emailController.text = user.email ?? '';
+        _emailController.text = user.email;
 
         // Get user data from Firestore
         final userData = await _firebaseService.getUserData(user.uid);
@@ -59,7 +59,7 @@ class _ProfileState extends State<Profile> {
           // If no user document found, create one with basic info
           await _firebaseService.storeUserData(user.uid, {
             'name': user.displayName ?? 'User',
-            'email': user.email ?? '',
+            'email': user.email,
             'phone': '',
             'address': '',
             'role': 'User',

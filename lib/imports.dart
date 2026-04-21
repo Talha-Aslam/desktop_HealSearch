@@ -11,6 +11,4 @@ export 'package:desktop_search_a_holic/registration.dart';
 export 'package:desktop_search_a_holic/system.dart';
 export 'apicalls.dart';
 export 'mock_firebase.dart';
-export 'mock_firebase.dart';
-export 'mock_firebase.dart';
 export 'firebase_options.dart';

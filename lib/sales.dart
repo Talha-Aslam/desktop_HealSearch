@@ -1,5 +1,5 @@
+import 'package:desktop_search_a_holic/main.dart';
 import 'package:flutter/material.dart';
-import 'package:desktop_search_a_holic/sales_service.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/sidebar.dart';
@@ -13,7 +13,6 @@ class Sales extends StatefulWidget {
 }
 
 class _SalesState extends State<Sales> {
-  final SalesService _salesService = SalesService();
   List<Map<String, dynamic>> sales = [];
   bool _isLoading = false;
 
@@ -29,16 +28,29 @@ class _SalesState extends State<Sales> {
     });
 
     try {
-      List<Map<String, dynamic>> loadedSales = await _salesService.getSales();
+      final localSales = await appDb.select(appDb.sales).get();
+      List<Map<String, dynamic>> loadedSales = localSales.map((s) {
+        return {
+          'id': s.id.toString(),
+          'total': s.totalAmount,
+          'date': DateFormat('yyyy-MM-dd HH:mm').format(s.createdAt),
+          'customerName': 'Customer', // No customer data in local MVP schema
+          'isSynced': s.isSyncedToCloud,
+          'items': [], // No line-items tracked locally in MVP schema
+        };
+      }).toList();
+
+      // Sort by newest first
+      loadedSales.sort((a, b) => b['date'].compareTo(a['date']));
+
       setState(() {
         sales = loadedSales;
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading sales: $e');
+      print('Error loading sales from local DB: $e');
       setState(() {
         _isLoading = false;
-        // Load dummy data as fallback
         _loadDummySalesData();
       });
     }
@@ -207,7 +219,14 @@ class _SalesState extends State<Sales> {
                                     try {
                                       saleDate = DateTime.parse(sale['date']);
                                     } catch (e) {
-                                      saleDate = DateTime.now();
+                                      // If the format is already "yyyy-MM-dd HH:mm" it might throw parse error in some locales, try alternate parsing
+                                      try {
+                                        saleDate =
+                                            DateFormat('yyyy-MM-dd HH:mm')
+                                                .parse(sale['date']);
+                                      } catch (e2) {
+                                        saleDate = DateTime.now();
+                                      }
                                     }
                                     String formattedDate =
                                         DateFormat('MMM dd, yyyy - HH:mm')
@@ -253,12 +272,26 @@ class _SalesState extends State<Sales> {
                                               CrossAxisAlignment.start,
                                           children: [
                                             const SizedBox(height: 4),
-                                            Text(
-                                              'Customer: ${sale['customerName'] ?? 'N/A'}',
-                                              style: TextStyle(
-                                                color: themeProvider.textColor
-                                                    .withOpacity(0.7),
-                                              ),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  'Customer: ${sale['customerName'] ?? 'N/A'}',
+                                                  style: TextStyle(
+                                                    color: themeProvider
+                                                        .textColor
+                                                        .withOpacity(0.7),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                if (sale['isSynced'] == true)
+                                                  const Icon(Icons.cloud_done,
+                                                      size: 14,
+                                                      color: Colors.green)
+                                                else
+                                                  const Icon(Icons.cloud_off,
+                                                      size: 14,
+                                                      color: Colors.orange),
+                                              ],
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
