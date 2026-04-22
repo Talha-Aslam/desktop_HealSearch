@@ -7,6 +7,8 @@ class SupabaseSyncService {
   final AppDatabase db;
   final SupabaseClient supabase;
   Timer? _syncTimer;
+  bool? _salesSupportsItemsJson;
+  bool _reportedMissingItemsJsonWarning = false;
 
   SupabaseSyncService(this.db, this.supabase);
 
@@ -48,6 +50,8 @@ class SupabaseSyncService {
     final pharmacyId = profile?['pharmacy_id'] as String?;
     if (pharmacyId == null) return;
 
+    final supportsItemsJson = await _salesTableSupportsItemsJson();
+
     // 1. Fetch all unsynced sales from local Drift database
     final unsyncedSales = await (db.select(db.sales)
           ..where((t) => t.isSyncedToCloud.equals(false)))
@@ -64,11 +68,36 @@ class SupabaseSyncService {
               'total_amount': sale.totalAmount,
               'created_at': sale.createdAt.toIso8601String(),
               'pharmacy_id': pharmacyId, // INJECT TENANT ID FOR RLS
+              if (supportsItemsJson) 'items_json': sale.itemsJson,
             })
         .toList();
 
     // 3. Push to Supabase (upsert is safest in case of retries/conflicts)
-    await supabase.from('sales').upsert(salesData);
+    try {
+      await supabase.from('sales').upsert(salesData);
+    } catch (e) {
+      // If the cloud schema doesn't support items_json yet, retry summary-only.
+      if (supportsItemsJson) {
+        _salesSupportsItemsJson = false;
+        if (!_reportedMissingItemsJsonWarning) {
+          _reportedMissingItemsJsonWarning = true;
+          print(
+              'WARNING: Supabase sales table appears to be missing items_json. Detailed invoice items will not sync until this column exists.');
+        }
+
+        final fallbackSalesData = unsyncedSales
+            .map((sale) => {
+                  'id': sale.id,
+                  'total_amount': sale.totalAmount,
+                  'created_at': sale.createdAt.toIso8601String(),
+                  'pharmacy_id': pharmacyId,
+                })
+            .toList();
+        await supabase.from('sales').upsert(fallbackSalesData);
+      } else {
+        rethrow;
+      }
+    }
 
     // 4. Update the local records to mark them as synced
     for (final sale in unsyncedSales) {
@@ -77,5 +106,25 @@ class SupabaseSyncService {
     }
 
     print('Successfully synced ${unsyncedSales.length} sales to Supabase.');
+  }
+
+  Future<bool> _salesTableSupportsItemsJson() async {
+    if (_salesSupportsItemsJson != null) {
+      return _salesSupportsItemsJson!;
+    }
+
+    try {
+      await supabase.from('sales').select('items_json').limit(1);
+      _salesSupportsItemsJson = true;
+      return true;
+    } catch (_) {
+      _salesSupportsItemsJson = false;
+      if (!_reportedMissingItemsJsonWarning) {
+        _reportedMissingItemsJsonWarning = true;
+        print(
+            'WARNING: Supabase sales table is missing items_json. Add this column to store invoice line-item details in cloud backups.');
+      }
+      return false;
+    }
   }
 }

@@ -12,8 +12,13 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
+  static final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+
+  final _supabase = Supabase.instance.client;
   final TextEditingController email = TextEditingController();
   final TextEditingController password = TextEditingController();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
   bool _isLoading = false;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -23,104 +28,129 @@ class _LoginState extends State<Login> {
   void dispose() {
     email.dispose();
     password.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
-  String validateLogin() {
-    if (email.text == "") {
-      return "emptyEmail"; // Error Message
-    } else if (password.text == "") {
-      return "emptyPassword"; // Error Message
-    } else {
-      return "valid"; // Valid Message
-    }
+  void _showMessage(
+    String message, {
+    Color? backgroundColor,
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: duration,
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration(
+    ThemeProvider themeProvider, {
+    required String label,
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    final filled = !themeProvider.isDarkMode;
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white),
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+      prefixIcon: Icon(icon, color: Colors.white),
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white, width: 2),
+      ),
+      errorStyle: const TextStyle(
+        color: Colors.yellow,
+        fontWeight: FontWeight.bold,
+      ),
+      filled: filled,
+      fillColor: filled ? Colors.black.withOpacity(0.3) : Colors.transparent,
+    );
   }
 
   Future<void> checkLogin(BuildContext context) async {
-    String validationMessage = validateLogin();
-    if (validationMessage == "valid") {
-      setState(() {
-        _isLoading = true;
-      });
+    if (_isLoading) return;
 
-      try {
-        // Attempt to sign in with Supabase Auth
-        final AuthResponse response =
-            await Supabase.instance.client.auth.signInWithPassword(
-          email: email.text.trim(),
-          password: password.text,
-        );
+    final enteredEmail = email.text.trim();
+    final enteredPassword = password.text;
 
-        if (response.user != null) {
-          // Fetch the user's pharmacy profile to get the Tenant ID
-          final profileData = await Supabase.instance.client
-              .from('user_profiles')
-              .select('pharmacy_id')
-              .eq('id', response.user!.id)
-              .single();
+    if (enteredEmail.isEmpty) {
+      _showMessage('Please enter your email', backgroundColor: Colors.orange);
+      return;
+    }
+    if (!_emailRegex.hasMatch(enteredEmail)) {
+      _showMessage('Please enter a valid email address',
+          backgroundColor: Colors.orange);
+      return;
+    }
+    if (enteredPassword.isEmpty) {
+      _showMessage('Please enter your password',
+          backgroundColor: Colors.orange);
+      return;
+    }
 
-          final pharmacyId = profileData['pharmacy_id'] as String;
+    setState(() {
+      _isLoading = true;
+    });
 
-          if (context.mounted) {
-            Provider.of<TenantProvider>(context, listen: false)
-                .setPharmacyId(pharmacyId);
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Login successful!'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            Navigator.pushReplacementNamed(context, '/dashboard');
-          }
-        }
-      } on AuthException catch (e) {
-        String errorMessage = 'Login failed: ${e.message}';
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: 'Dismiss',
-                textColor: Colors.white,
-                onPressed: () {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                },
-              ),
-            ),
-          );
-        }
-      } catch (e) {
-        // Handle other errors
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Login error: ${e.toString()}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
-    } else {
-      // Show validation error
-      String fieldName =
-          validationMessage == "emptyEmail" ? "email" : "password";
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please enter your $fieldName'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
-        ),
+    try {
+      // Attempt to sign in with Supabase Auth
+      final AuthResponse response = await _supabase.auth.signInWithPassword(
+        email: enteredEmail,
+        password: enteredPassword,
       );
+
+      if (response.user != null) {
+        // Fetch the user's pharmacy profile to get the Tenant ID
+        final profileData = await _supabase
+            .from('user_profiles')
+            .select('pharmacy_id')
+            .eq('id', response.user!.id)
+            .single();
+
+        final pharmacyId = profileData['pharmacy_id'] as String;
+
+        if (!context.mounted) return;
+
+        Provider.of<TenantProvider>(context, listen: false)
+            .setPharmacyId(pharmacyId);
+
+        _showMessage('Login successful!', backgroundColor: Colors.green);
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
+    } on AuthException catch (e) {
+      _showMessage(
+        'Login failed: ${e.message}',
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      _showMessage(
+        'Login error: ${e.toString()}',
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -194,36 +224,15 @@ class _LoginState extends State<Login> {
                     // Email field
                     TextFormField(
                       controller: email,
-                      decoration: InputDecoration(
-                        labelText: 'Email Address',
-                        labelStyle: TextStyle(color: Colors.white),
-                        hintText: 'Enter your email address',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.email, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider
-                            .isDarkMode, // Only fill background in light mode
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : // Darker background for light mode
-                            Colors.transparent, // Keep transparent in dark mode
+                      focusNode: _emailFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          _passwordFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Email Address',
+                        hint: 'Enter your email address',
+                        icon: Icons.email,
                       ),
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.emailAddress,
@@ -238,13 +247,14 @@ class _LoginState extends State<Login> {
                     // Password field
                     TextFormField(
                       controller: password,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your password',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon: const Icon(Icons.lock, color: Colors.white),
+                      focusNode: _passwordFocusNode,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => checkLogin(context),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Password',
+                        hint: 'Enter your password',
+                        icon: Icons.lock,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword
@@ -258,28 +268,6 @@ class _LoginState extends State<Login> {
                             });
                           },
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider
-                            .isDarkMode, // Only fill background in light mode
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : // Darker background for light mode
-                            Colors.transparent, // Keep transparent in dark mode
                       ),
                       style: const TextStyle(color: Colors.white),
                       obscureText: _obscurePassword,

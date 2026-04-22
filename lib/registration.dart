@@ -11,12 +11,24 @@ class Registration extends StatefulWidget {
 }
 
 class _RegistrationState extends State<Registration> {
+  static final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+  static final RegExp _uppercaseRegex = RegExp(r'[A-Z]');
+  static final RegExp _lowercaseRegex = RegExp(r'[a-z]');
+  static final RegExp _digitRegex = RegExp(r'[0-9]');
+  static final RegExp _specialCharRegex = RegExp(r'[!@#\$%^&*(),.?":{}|<>]');
+
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+
+  final FocusNode _nameFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _phoneFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+  final FocusNode _confirmPasswordFocusNode = FocusNode();
 
   final _supabase = Supabase.instance.client;
 
@@ -25,56 +37,87 @@ class _RegistrationState extends State<Registration> {
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
-  // Password strength indicators
-  bool _hasMinLength = false;
-  bool _hasUppercase = false;
-  bool _hasLowercase = false;
-  bool _hasDigit = false;
-  bool _hasSpecialChar = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _passwordController.addListener(_checkPasswordStrength);
-  }
-
   @override
   void dispose() {
-    _passwordController.removeListener(_checkPasswordStrength);
     _passwordController.dispose();
     _nameController.dispose();
     _emailController.dispose();
     _confirmPasswordController.dispose();
     _phoneController.dispose();
+    _nameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _phoneFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
     super.dispose();
+  }
+
+  void _showMessage(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration(
+    ThemeProvider themeProvider, {
+    required String label,
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    final filled = !themeProvider.isDarkMode;
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white),
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+      prefixIcon: Icon(icon, color: Colors.white),
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white, width: 2),
+      ),
+      errorStyle: const TextStyle(
+        color: Colors.yellow,
+        fontWeight: FontWeight.bold,
+      ),
+      filled: filled,
+      fillColor: filled ? Colors.black.withOpacity(0.3) : Colors.transparent,
+    );
   }
 
   // Generate automatic shop ID
   Future<String> _generateShopId() async {
-    try {
-      final response = await _supabase
-          .from('pharmacies')
-          .select('id')
-          .limit(1)
-          .order('created_at', ascending: false);
-      int count = (response as List).length + 1; // Just a rough estimate
-
-      return 'SHOP${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
-    } catch (e) {
-      return 'SHOP${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
-    }
+    return 'SHOP${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
   }
 
   // Register user with Supabase
   Future<void> registerUser() async {
+    if (_isLoading) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match')),
-      );
+    final fullName = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    final contactNumber = _phoneController.text.trim();
+
+    if (password != confirmPassword) {
+      _showMessage('Passwords do not match');
       return;
     }
 
@@ -85,8 +128,8 @@ class _RegistrationState extends State<Registration> {
     try {
       // 1. Sign up user
       final AuthResponse res = await _supabase.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        email: email,
+        password: password,
       );
 
       final user = res.user;
@@ -98,10 +141,7 @@ class _RegistrationState extends State<Registration> {
       String autoShopId = await _generateShopId();
 
       final pharmacyData = {
-        'name': _nameController.text.trim() + ' Pharmacy', // or let them pick
-        'address': '',
-        'contact_number': _phoneController.text,
-        // user could change this
+        'name': '$fullName Pharmacy',
       };
 
       final pharmacyRes = await _supabase
@@ -117,52 +157,47 @@ class _RegistrationState extends State<Registration> {
         'id': user.id,
         'pharmacy_id': pharmacyId,
         'role': 'owner',
-        'full_name': _nameController.text.trim(),
+        'name': fullName,
+        'phone': contactNumber,
       };
 
-      await _supabase.from('user_profiles').insert(profileData);
+      try {
+        await _supabase.from('user_profiles').insert(profileData);
+      } catch (_) {
+        // Fallback for schemas that don't yet have user_profiles.phone.
+        await _supabase.from('user_profiles').insert({
+          'id': user.id,
+          'pharmacy_id': pharmacyId,
+          'role': 'owner',
+          'name': fullName,
+        });
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Registration successful! Shop ID: $autoShopId.'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      if (!mounted) return;
+
+      _showMessage('Registration successful! Shop ID: $autoShopId.');
 
       Navigator.pushReplacementNamed(context, '/login');
     } on AuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration failed: ${e.message}')),
-      );
+      _showMessage('Registration failed: ${e.message}');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Registration error: ${e.toString()}')),
-      );
+      _showMessage('Registration error: ${e.toString()}');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
-  void _checkPasswordStrength() {
-    final password = _passwordController.text;
-    setState(() {
-      _hasMinLength = password.length >= 8;
-      _hasUppercase = password.contains(RegExp(r'[A-Z]'));
-      _hasLowercase = password.contains(RegExp(r'[a-z]'));
-      _hasDigit = password.contains(RegExp(r'[0-9]'));
-      _hasSpecialChar = password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'));
-    });
-  }
-
-  double _calculatePasswordStrength() {
+  double _calculatePasswordStrength(String password) {
     int strength = 0;
-    if (_hasMinLength) strength++;
-    if (_hasUppercase) strength++;
-    if (_hasLowercase) strength++;
-    if (_hasDigit) strength++;
-    if (_hasSpecialChar) strength++;
+    if (password.length >= 8) strength++;
+    if (_uppercaseRegex.hasMatch(password)) strength++;
+    if (_lowercaseRegex.hasMatch(password)) strength++;
+    if (_digitRegex.hasMatch(password)) strength++;
+    if (_specialCharRegex.hasMatch(password)) strength++;
 
     return strength / 5;
   }
@@ -184,8 +219,7 @@ class _RegistrationState extends State<Registration> {
       return 'Please enter your email';
     }
 
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
+    if (!_emailRegex.hasMatch(value)) {
       return 'Please enter a valid email address';
     }
 
@@ -229,10 +263,6 @@ class _RegistrationState extends State<Registration> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final size = MediaQuery.of(context).size;
-
-    final double passwordStrength = _calculatePasswordStrength();
-    final Color strengthColor = _getStrengthColor(passwordStrength);
-    final String strengthText = _getStrengthText(passwordStrength);
 
     return Scaffold(
       appBar: AppBar(
@@ -318,34 +348,14 @@ class _RegistrationState extends State<Registration> {
                     // Name field
                     TextFormField(
                       controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your full name',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.person, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider.isDarkMode,
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.transparent,
+                      focusNode: _nameFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) => _emailFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Full Name',
+                        hint: 'Enter your full name',
+                        icon: Icons.person,
                       ),
                       style: const TextStyle(color: Colors.white),
                       validator: (value) {
@@ -360,34 +370,14 @@ class _RegistrationState extends State<Registration> {
                     // Email field
                     TextFormField(
                       controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email Address',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your email address',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.email, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider.isDarkMode,
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.transparent,
+                      focusNode: _emailFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) => _phoneFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Email Address',
+                        hint: 'Enter your email address',
+                        icon: Icons.email,
                       ),
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.emailAddress,
@@ -398,34 +388,15 @@ class _RegistrationState extends State<Registration> {
                     // Phone field
                     TextFormField(
                       controller: _phoneController,
-                      decoration: InputDecoration(
-                        labelText: 'Phone Number',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your phone number',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.phone, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider.isDarkMode,
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.transparent,
+                      focusNode: _phoneFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          _passwordFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Phone Number',
+                        hint: 'Enter your phone number',
+                        icon: Icons.phone,
                       ),
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.phone,
@@ -438,44 +409,18 @@ class _RegistrationState extends State<Registration> {
                     ),
                     const SizedBox(height: 16.0),
 
-                    // Shop ID information
-                    Container(
-                      padding: const EdgeInsets.all(12.0),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border:
-                            Border.all(color: Colors.white.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              color: Colors.white, size: 20),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Your Shop ID will be automatically generated during registration',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16.0),
-
                     // Password field with strength indicator
                     TextFormField(
                       controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your password',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon: const Icon(Icons.lock, color: Colors.white),
+                      focusNode: _passwordFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          _confirmPasswordFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Password',
+                        hint: 'Enter your password',
+                        icon: Icons.lock,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword
@@ -489,26 +434,6 @@ class _RegistrationState extends State<Registration> {
                             });
                           },
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider.isDarkMode,
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.transparent,
                       ),
                       style: const TextStyle(color: Colors.white),
                       obscureText: _obscurePassword,
@@ -516,78 +441,105 @@ class _RegistrationState extends State<Registration> {
                     ),
 
                     // Password strength indicator
-                    if (_passwordController.text.isNotEmpty) ...[
-                      const SizedBox(height: 10.0),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _passwordController,
+                      builder: (context, value, child) {
+                        final passwordText = value.text;
+                        if (passwordText.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        final hasMinLength = passwordText.length >= 8;
+                        final hasUppercase =
+                            _uppercaseRegex.hasMatch(passwordText);
+                        final hasLowercase =
+                            _lowercaseRegex.hasMatch(passwordText);
+                        final hasDigit = _digitRegex.hasMatch(passwordText);
+                        final hasSpecialChar =
+                            _specialCharRegex.hasMatch(passwordText);
+                        final passwordStrength =
+                            _calculatePasswordStrength(passwordText);
+                        final strengthColor =
+                            _getStrengthColor(passwordStrength);
+                        final strengthText = _getStrengthText(passwordStrength);
+
+                        return Column(
                           children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Password Strength: ',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
+                            const SizedBox(height: 10.0),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        'Password Strength: ',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      Text(
+                                        strengthText,
+                                        style: TextStyle(
+                                          color: strengthColor,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                Text(
-                                  strengthText,
-                                  style: TextStyle(
-                                    color: strengthColor,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                                  const SizedBox(height: 6),
+                                  // Progress bar for password strength
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: passwordStrength,
+                                      backgroundColor:
+                                          Colors.white.withOpacity(0.3),
+                                      color: strengthColor,
+                                      minHeight: 6,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            // Progress bar for password strength
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: passwordStrength,
-                                backgroundColor: Colors.white.withOpacity(0.3),
-                                color: strengthColor,
-                                minHeight: 6,
+                                  const SizedBox(height: 10),
+
+                                  // Password criteria checklist
+                                  _buildPasswordCriteriaRow(
+                                      hasMinLength, 'At least 8 characters'),
+                                  _buildPasswordCriteriaRow(hasUppercase,
+                                      'At least one uppercase letter (A-Z)'),
+                                  _buildPasswordCriteriaRow(hasLowercase,
+                                      'At least one lowercase letter (a-z)'),
+                                  _buildPasswordCriteriaRow(
+                                      hasDigit, 'At least one number (0-9)'),
+                                  _buildPasswordCriteriaRow(hasSpecialChar,
+                                      'At least one special character (!@#\$%^&*...)'),
+                                ],
                               ),
                             ),
-                            const SizedBox(height: 10),
-
-                            // Password criteria checklist
-                            _buildPasswordCriteriaRow(
-                                _hasMinLength, 'At least 8 characters'),
-                            _buildPasswordCriteriaRow(_hasUppercase,
-                                'At least one uppercase letter (A-Z)'),
-                            _buildPasswordCriteriaRow(_hasLowercase,
-                                'At least one lowercase letter (a-z)'),
-                            _buildPasswordCriteriaRow(
-                                _hasDigit, 'At least one number (0-9)'),
-                            _buildPasswordCriteriaRow(_hasSpecialChar,
-                                'At least one special character (!@#\$%^&*...)'),
                           ],
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
 
                     const SizedBox(height: 16.0),
 
                     // Confirm password field
                     TextFormField(
                       controller: _confirmPasswordController,
-                      decoration: InputDecoration(
-                        labelText: 'Confirm Password',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Confirm your password',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.lock_outline, color: Colors.white),
+                      focusNode: _confirmPasswordFocusNode,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => registerUser(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Confirm Password',
+                        hint: 'Confirm your password',
+                        icon: Icons.lock_outline,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirmPassword
@@ -602,26 +554,6 @@ class _RegistrationState extends State<Registration> {
                             });
                           },
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider.isDarkMode,
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.transparent,
                       ),
                       style: const TextStyle(color: Colors.white),
                       obscureText: _obscureConfirmPassword,

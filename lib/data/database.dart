@@ -21,6 +21,7 @@ class Medicines extends Table {
 class Sales extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get pharmacyId => text().nullable()(); // NEW TENANT ID COLUMN
+  TextColumn get itemsJson => text().nullable()();
   RealColumn get totalAmount => real()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get isSyncedToCloud =>
@@ -32,7 +33,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2; // INCREMENTED SCHEMA VERSION FOR MIGRATION
+  int get schemaVersion => 3; // INCREMENTED SCHEMA VERSION FOR MIGRATION
 
   @override
   MigrationStrategy get migration {
@@ -45,6 +46,9 @@ class AppDatabase extends _$AppDatabase {
           // WE ADDED THE PHARMACY_ID TO BOTH TABLES
           await m.addColumn(medicines, medicines.pharmacyId);
           await m.addColumn(sales, sales.pharmacyId);
+        }
+        if (from < 3) {
+          await m.addColumn(sales, sales.itemsJson);
         }
       },
     );

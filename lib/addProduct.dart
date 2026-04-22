@@ -10,6 +10,7 @@ import 'package:desktop_search_a_holic/sidebar.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
 
 class AddProduct extends StatefulWidget {
   const AddProduct({super.key});
@@ -58,6 +59,13 @@ class _AddProduct extends State<AddProduct> {
     });
 
     try {
+      final pharmacyId =
+          Provider.of<TenantProvider>(context, listen: false).pharmacyId;
+
+      if (pharmacyId == null) {
+        throw Exception('No active pharmacy session');
+      }
+
       // Create product data map locally using Drift
       DateTime? parsedExpiry;
       try {
@@ -71,6 +79,7 @@ class _AddProduct extends State<AddProduct> {
 
       await appDb.into(appDb.medicines).insert(
             MedicinesCompanion(
+              pharmacyId: drift.Value(pharmacyId),
               name: drift.Value(_productName.text.trim()),
               price: drift.Value(
                   double.tryParse(_productPrice.text.trim()) ?? 0.0),

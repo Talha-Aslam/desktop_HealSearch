@@ -19,6 +19,7 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
   List<Map<String, dynamic>> allInvoices = [];
   Map<String, dynamic>? currentInvoice;
   bool _isLoading = true;
+  bool _isFetchingInvoices = false;
 
   @override
   void initState() {
@@ -44,23 +45,24 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh invoice data when this page becomes active
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadAllInvoices();
-      }
-    });
   }
 
-  Future<void> _loadAllInvoices() async {
+  Future<void> _loadAllInvoices({bool showLoading = true}) async {
+    if (_isFetchingInvoices) return;
+    _isFetchingInvoices = true;
+
     try {
-      setState(() {
-        _isLoading = true;
-      });
+      if (showLoading && mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
 
       print('Loading all invoices...');
       List<Map<String, dynamic>> invoices =
           await _invoiceService.getRecentInvoices(limit: 50);
+
+      if (!mounted) return;
 
       setState(() {
         allInvoices = invoices;
@@ -74,11 +76,15 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
       });
     } catch (e) {
       print('Error loading invoices: $e');
-      setState(() {
-        _isLoading = false;
-        allInvoices = [];
-        currentInvoice = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          allInvoices = [];
+          currentInvoice = null;
+        });
+      }
+    } finally {
+      _isFetchingInvoices = false;
     }
   }
 
@@ -518,6 +524,72 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _confirmDeleteInvoice(Map<String, dynamic> invoice) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Invoice'),
+        content: Text(
+          'Are you sure you want to delete ${invoice['invoiceNumber'] ?? 'this invoice'}? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final deleted =
+          await _invoiceService.deleteInvoice(invoice['id'].toString());
+      if (!mounted) return;
+
+      if (!deleted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice not found or already deleted.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await _loadAllInvoices(showLoading: false);
+
+      if (!mounted) return;
+      setState(() {
+        if (currentInvoice != null &&
+            currentInvoice!['id'].toString() == invoice['id'].toString()) {
+          currentInvoice = allInvoices.isNotEmpty ? allInvoices.first : null;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invoice deleted successfully.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete invoice: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -564,6 +636,19 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                 );
               }
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () {
+              if (currentInvoice != null) {
+                _confirmDeleteInvoice(currentInvoice!);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No invoice selected')),
+                );
+              }
+            },
+            tooltip: 'Delete Invoice',
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
@@ -661,7 +746,8 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                               selectedTileColor: themeProvider.gradientColors[0]
                                   .withOpacity(0.1),
                               title: Text(
-                                'INV-${inv['id'].toString().substring(0, 8).toUpperCase()}',
+                                inv['invoiceNumber']?.toString() ??
+                                    'INV-${inv['id']}',
                                 style: TextStyle(
                                   fontWeight: isSelected
                                       ? FontWeight.bold
@@ -676,6 +762,12 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                                       themeProvider.textColor.withOpacity(0.6),
                                   fontSize: 12,
                                 ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    color: Colors.red),
+                                tooltip: 'Delete Invoice',
+                                onPressed: () => _confirmDeleteInvoice(inv),
                               ),
                               onTap: () {
                                 setState(() {

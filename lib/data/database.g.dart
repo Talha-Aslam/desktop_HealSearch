@@ -453,6 +453,12 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
   late final GeneratedColumn<String> pharmacyId = GeneratedColumn<String>(
       'pharmacy_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _itemsJsonMeta =
+      const VerificationMeta('itemsJson');
+  @override
+  late final GeneratedColumn<String> itemsJson = GeneratedColumn<String>(
+      'items_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _totalAmountMeta =
       const VerificationMeta('totalAmount');
   @override
@@ -479,7 +485,7 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
       defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns =>
-      [id, pharmacyId, totalAmount, createdAt, isSyncedToCloud];
+      [id, pharmacyId, itemsJson, totalAmount, createdAt, isSyncedToCloud];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -498,6 +504,10 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
           _pharmacyIdMeta,
           pharmacyId.isAcceptableOrUnknown(
               data['pharmacy_id']!, _pharmacyIdMeta));
+    }
+    if (data.containsKey('items_json')) {
+      context.handle(_itemsJsonMeta,
+          itemsJson.isAcceptableOrUnknown(data['items_json']!, _itemsJsonMeta));
     }
     if (data.containsKey('total_amount')) {
       context.handle(
@@ -530,6 +540,8 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
           .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
       pharmacyId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}pharmacy_id']),
+      itemsJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}items_json']),
       totalAmount: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}total_amount'])!,
       createdAt: attachedDatabase.typeMapping
@@ -548,12 +560,14 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
 class Sale extends DataClass implements Insertable<Sale> {
   final int id;
   final String? pharmacyId;
+  final String? itemsJson;
   final double totalAmount;
   final DateTime createdAt;
   final bool isSyncedToCloud;
   const Sale(
       {required this.id,
       this.pharmacyId,
+      this.itemsJson,
       required this.totalAmount,
       required this.createdAt,
       required this.isSyncedToCloud});
@@ -563,6 +577,9 @@ class Sale extends DataClass implements Insertable<Sale> {
     map['id'] = Variable<int>(id);
     if (!nullToAbsent || pharmacyId != null) {
       map['pharmacy_id'] = Variable<String>(pharmacyId);
+    }
+    if (!nullToAbsent || itemsJson != null) {
+      map['items_json'] = Variable<String>(itemsJson);
     }
     map['total_amount'] = Variable<double>(totalAmount);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -576,6 +593,9 @@ class Sale extends DataClass implements Insertable<Sale> {
       pharmacyId: pharmacyId == null && nullToAbsent
           ? const Value.absent()
           : Value(pharmacyId),
+      itemsJson: itemsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(itemsJson),
       totalAmount: Value(totalAmount),
       createdAt: Value(createdAt),
       isSyncedToCloud: Value(isSyncedToCloud),
@@ -588,6 +608,7 @@ class Sale extends DataClass implements Insertable<Sale> {
     return Sale(
       id: serializer.fromJson<int>(json['id']),
       pharmacyId: serializer.fromJson<String?>(json['pharmacyId']),
+      itemsJson: serializer.fromJson<String?>(json['itemsJson']),
       totalAmount: serializer.fromJson<double>(json['totalAmount']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       isSyncedToCloud: serializer.fromJson<bool>(json['isSyncedToCloud']),
@@ -599,6 +620,7 @@ class Sale extends DataClass implements Insertable<Sale> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'pharmacyId': serializer.toJson<String?>(pharmacyId),
+      'itemsJson': serializer.toJson<String?>(itemsJson),
       'totalAmount': serializer.toJson<double>(totalAmount),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'isSyncedToCloud': serializer.toJson<bool>(isSyncedToCloud),
@@ -608,12 +630,14 @@ class Sale extends DataClass implements Insertable<Sale> {
   Sale copyWith(
           {int? id,
           Value<String?> pharmacyId = const Value.absent(),
+          Value<String?> itemsJson = const Value.absent(),
           double? totalAmount,
           DateTime? createdAt,
           bool? isSyncedToCloud}) =>
       Sale(
         id: id ?? this.id,
         pharmacyId: pharmacyId.present ? pharmacyId.value : this.pharmacyId,
+        itemsJson: itemsJson.present ? itemsJson.value : this.itemsJson,
         totalAmount: totalAmount ?? this.totalAmount,
         createdAt: createdAt ?? this.createdAt,
         isSyncedToCloud: isSyncedToCloud ?? this.isSyncedToCloud,
@@ -623,6 +647,7 @@ class Sale extends DataClass implements Insertable<Sale> {
       id: data.id.present ? data.id.value : this.id,
       pharmacyId:
           data.pharmacyId.present ? data.pharmacyId.value : this.pharmacyId,
+      itemsJson: data.itemsJson.present ? data.itemsJson.value : this.itemsJson,
       totalAmount:
           data.totalAmount.present ? data.totalAmount.value : this.totalAmount,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -637,6 +662,7 @@ class Sale extends DataClass implements Insertable<Sale> {
     return (StringBuffer('Sale(')
           ..write('id: $id, ')
           ..write('pharmacyId: $pharmacyId, ')
+          ..write('itemsJson: $itemsJson, ')
           ..write('totalAmount: $totalAmount, ')
           ..write('createdAt: $createdAt, ')
           ..write('isSyncedToCloud: $isSyncedToCloud')
@@ -645,14 +671,15 @@ class Sale extends DataClass implements Insertable<Sale> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, pharmacyId, totalAmount, createdAt, isSyncedToCloud);
+  int get hashCode => Object.hash(
+      id, pharmacyId, itemsJson, totalAmount, createdAt, isSyncedToCloud);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Sale &&
           other.id == this.id &&
           other.pharmacyId == this.pharmacyId &&
+          other.itemsJson == this.itemsJson &&
           other.totalAmount == this.totalAmount &&
           other.createdAt == this.createdAt &&
           other.isSyncedToCloud == this.isSyncedToCloud);
@@ -661,12 +688,14 @@ class Sale extends DataClass implements Insertable<Sale> {
 class SalesCompanion extends UpdateCompanion<Sale> {
   final Value<int> id;
   final Value<String?> pharmacyId;
+  final Value<String?> itemsJson;
   final Value<double> totalAmount;
   final Value<DateTime> createdAt;
   final Value<bool> isSyncedToCloud;
   const SalesCompanion({
     this.id = const Value.absent(),
     this.pharmacyId = const Value.absent(),
+    this.itemsJson = const Value.absent(),
     this.totalAmount = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.isSyncedToCloud = const Value.absent(),
@@ -674,6 +703,7 @@ class SalesCompanion extends UpdateCompanion<Sale> {
   SalesCompanion.insert({
     this.id = const Value.absent(),
     this.pharmacyId = const Value.absent(),
+    this.itemsJson = const Value.absent(),
     required double totalAmount,
     this.createdAt = const Value.absent(),
     this.isSyncedToCloud = const Value.absent(),
@@ -681,6 +711,7 @@ class SalesCompanion extends UpdateCompanion<Sale> {
   static Insertable<Sale> custom({
     Expression<int>? id,
     Expression<String>? pharmacyId,
+    Expression<String>? itemsJson,
     Expression<double>? totalAmount,
     Expression<DateTime>? createdAt,
     Expression<bool>? isSyncedToCloud,
@@ -688,6 +719,7 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (pharmacyId != null) 'pharmacy_id': pharmacyId,
+      if (itemsJson != null) 'items_json': itemsJson,
       if (totalAmount != null) 'total_amount': totalAmount,
       if (createdAt != null) 'created_at': createdAt,
       if (isSyncedToCloud != null) 'is_synced_to_cloud': isSyncedToCloud,
@@ -697,12 +729,14 @@ class SalesCompanion extends UpdateCompanion<Sale> {
   SalesCompanion copyWith(
       {Value<int>? id,
       Value<String?>? pharmacyId,
+      Value<String?>? itemsJson,
       Value<double>? totalAmount,
       Value<DateTime>? createdAt,
       Value<bool>? isSyncedToCloud}) {
     return SalesCompanion(
       id: id ?? this.id,
       pharmacyId: pharmacyId ?? this.pharmacyId,
+      itemsJson: itemsJson ?? this.itemsJson,
       totalAmount: totalAmount ?? this.totalAmount,
       createdAt: createdAt ?? this.createdAt,
       isSyncedToCloud: isSyncedToCloud ?? this.isSyncedToCloud,
@@ -717,6 +751,9 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     }
     if (pharmacyId.present) {
       map['pharmacy_id'] = Variable<String>(pharmacyId.value);
+    }
+    if (itemsJson.present) {
+      map['items_json'] = Variable<String>(itemsJson.value);
     }
     if (totalAmount.present) {
       map['total_amount'] = Variable<double>(totalAmount.value);
@@ -735,6 +772,7 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     return (StringBuffer('SalesCompanion(')
           ..write('id: $id, ')
           ..write('pharmacyId: $pharmacyId, ')
+          ..write('itemsJson: $itemsJson, ')
           ..write('totalAmount: $totalAmount, ')
           ..write('createdAt: $createdAt, ')
           ..write('isSyncedToCloud: $isSyncedToCloud')
@@ -962,6 +1000,7 @@ typedef $$MedicinesTableProcessedTableManager = ProcessedTableManager<
 typedef $$SalesTableCreateCompanionBuilder = SalesCompanion Function({
   Value<int> id,
   Value<String?> pharmacyId,
+  Value<String?> itemsJson,
   required double totalAmount,
   Value<DateTime> createdAt,
   Value<bool> isSyncedToCloud,
@@ -969,6 +1008,7 @@ typedef $$SalesTableCreateCompanionBuilder = SalesCompanion Function({
 typedef $$SalesTableUpdateCompanionBuilder = SalesCompanion Function({
   Value<int> id,
   Value<String?> pharmacyId,
+  Value<String?> itemsJson,
   Value<double> totalAmount,
   Value<DateTime> createdAt,
   Value<bool> isSyncedToCloud,
@@ -987,6 +1027,9 @@ class $$SalesTableFilterComposer extends Composer<_$AppDatabase, $SalesTable> {
 
   ColumnFilters<String> get pharmacyId => $composableBuilder(
       column: $table.pharmacyId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get itemsJson => $composableBuilder(
+      column: $table.itemsJson, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<double> get totalAmount => $composableBuilder(
       column: $table.totalAmount, builder: (column) => ColumnFilters(column));
@@ -1014,6 +1057,9 @@ class $$SalesTableOrderingComposer
   ColumnOrderings<String> get pharmacyId => $composableBuilder(
       column: $table.pharmacyId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get itemsJson => $composableBuilder(
+      column: $table.itemsJson, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<double> get totalAmount => $composableBuilder(
       column: $table.totalAmount, builder: (column) => ColumnOrderings(column));
 
@@ -1039,6 +1085,9 @@ class $$SalesTableAnnotationComposer
 
   GeneratedColumn<String> get pharmacyId => $composableBuilder(
       column: $table.pharmacyId, builder: (column) => column);
+
+  GeneratedColumn<String> get itemsJson =>
+      $composableBuilder(column: $table.itemsJson, builder: (column) => column);
 
   GeneratedColumn<double> get totalAmount => $composableBuilder(
       column: $table.totalAmount, builder: (column) => column);
@@ -1075,6 +1124,7 @@ class $$SalesTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<int> id = const Value.absent(),
             Value<String?> pharmacyId = const Value.absent(),
+            Value<String?> itemsJson = const Value.absent(),
             Value<double> totalAmount = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<bool> isSyncedToCloud = const Value.absent(),
@@ -1082,6 +1132,7 @@ class $$SalesTableTableManager extends RootTableManager<
               SalesCompanion(
             id: id,
             pharmacyId: pharmacyId,
+            itemsJson: itemsJson,
             totalAmount: totalAmount,
             createdAt: createdAt,
             isSyncedToCloud: isSyncedToCloud,
@@ -1089,6 +1140,7 @@ class $$SalesTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
             Value<String?> pharmacyId = const Value.absent(),
+            Value<String?> itemsJson = const Value.absent(),
             required double totalAmount,
             Value<DateTime> createdAt = const Value.absent(),
             Value<bool> isSyncedToCloud = const Value.absent(),
@@ -1096,6 +1148,7 @@ class $$SalesTableTableManager extends RootTableManager<
               SalesCompanion.insert(
             id: id,
             pharmacyId: pharmacyId,
+            itemsJson: itemsJson,
             totalAmount: totalAmount,
             createdAt: createdAt,
             isSyncedToCloud: isSyncedToCloud,

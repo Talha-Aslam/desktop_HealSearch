@@ -61,23 +61,23 @@ class _DashboardState extends State<Dashboard> {
         throw Exception('No active pharmacy session');
       }
 
-      // 1. Total Products
-      final productsStream = await (appDb.select(appDb.medicines)
-            ..where((t) => t.pharmacyId.equals(pharmacyId)))
-          .get();
-      final totalProducts = productsStream.length;
+      // 1-3. Fast aggregate stats without loading all rows in memory
+      final statsRows = await appDb.customSelect(
+        'SELECT '
+        '(SELECT COUNT(*) FROM medicines WHERE pharmacy_id = ?) AS total_products, '
+        '(SELECT COUNT(*) FROM sales WHERE pharmacy_id = ?) AS total_orders, '
+        '(SELECT COALESCE(SUM(total_amount), 0) FROM sales WHERE pharmacy_id = ?) AS total_sales',
+        variables: [
+          drift.Variable.withString(pharmacyId),
+          drift.Variable.withString(pharmacyId),
+          drift.Variable.withString(pharmacyId),
+        ],
+      ).getSingle();
 
-      // 2. Total Orders
-      final salesStream = await (appDb.select(appDb.sales)
-            ..where((t) => t.pharmacyId.equals(pharmacyId)))
-          .get();
-      final totalOrders = salesStream.length;
-
-      // 3. Total Sales Amount
-      double totalSalesAmount = 0.0;
-      for (var sale in salesStream) {
-        totalSalesAmount += sale.totalAmount;
-      }
+      final totalProducts = statsRows.read<int>('total_products');
+      final totalOrders = statsRows.read<int>('total_orders');
+      final totalSalesAmount =
+          (statsRows.data['total_sales'] as num?)?.toDouble() ?? 0.0;
 
       // 4. Generate Recent Activities from Drift Data
       List<Map<String, dynamic>> combinedActivities = [];
