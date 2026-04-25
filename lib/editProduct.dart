@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:desktop_search_a_holic/main.dart';
+import 'package:desktop_search_a_holic/data/database.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
-import 'package:desktop_search_a_holic/firebase_service.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:intl/intl.dart';
 
 class EditProduct extends StatefulWidget {
@@ -23,7 +26,6 @@ class _EditProductState extends State<EditProduct> {
   final TextEditingController _productExpiry = TextEditingController();
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final FirebaseService _firebaseService = FirebaseService();
 
   // Define categories list once to avoid duplicates
   static const List<String> _defaultCategories = [
@@ -102,39 +104,34 @@ class _EditProductState extends State<EditProduct> {
             'This is demonstration data. Please add real products to edit them.');
       }
 
-      Map<String, dynamic>? productData =
-          await _firebaseService.getProduct(widget.productID);
+      final productId = int.tryParse(widget.productID);
+      if (productId == null) {
+        throw Exception('Invalid product ID');
+      }
+
+      final pharmacyId =
+          Provider.of<TenantProvider>(context, listen: false).pharmacyId;
+      if (pharmacyId == null) {
+        throw Exception('No active pharmacy session');
+      }
+
+      final productRow = await (appDb.select(appDb.medicines)
+            ..where((t) => t.id.equals(productId))
+            ..where((t) => t.pharmacyId.equals(pharmacyId)))
+          .getSingleOrNull();
 
       if (!mounted) return; // Check mounted after async operation
 
-      if (productData != null) {
-        print('Product data loaded successfully: ${productData['name']}');
-        print('Raw product data: $productData');
-        print(
-            'Quantity from Firebase: ${productData['quantity']} (type: ${productData['quantity'].runtimeType})');
+      if (productRow != null) {
+        print('Product data loaded successfully: ${productRow.name}');
 
         setState(() {
-          _productName.text = productData['name'] ?? '';
-          _productPrice.text = productData['price']?.toString() ?? '';
-          // Ensure quantity is displayed as integer
-          var quantityValue = productData['quantity'];
-          if (quantityValue != null) {
-            // Convert to int first to remove decimal places, then to string
-            if (quantityValue is double) {
-              _productQty.text = quantityValue.toInt().toString();
-            } else if (quantityValue is int) {
-              _productQty.text = quantityValue.toString();
-            } else {
-              // Try to parse from string
-              int? parsed = int.tryParse(quantityValue.toString());
-              _productQty.text = (parsed ?? 0).toString();
-            }
-          } else {
-            _productQty.text = '0';
-          }
+          _productName.text = productRow.name;
+          _productPrice.text = productRow.price.toString();
+          _productQty.text = productRow.stock.toString();
 
           // Handle category validation - ensure loaded category exists in our categories list
-          String loadedCategory = productData['category'] ?? '';
+          String loadedCategory = productRow.category ?? '';
           print('Loaded category from database: "$loadedCategory"');
           print('Current categories list: $_categories');
 
@@ -154,7 +151,9 @@ class _EditProductState extends State<EditProduct> {
           _productCategory.text = loadedCategory;
           print('Set _productCategory.text to: "${_productCategory.text}"');
 
-          _productExpiry.text = productData['expiry'] ?? '';
+          _productExpiry.text = productRow.expiryDate != null
+              ? DateFormat('yyyy-MM-dd').format(productRow.expiryDate!)
+              : '';
           _isLoading = false;
         });
 
@@ -216,86 +215,38 @@ class _EditProductState extends State<EditProduct> {
     });
 
     try {
-      // Debug logging for quantity
-      print('Quantity text before parsing: "${_productQty.text}"');
-      print('Quantity text trimmed: "${_productQty.text.trim()}"');
-
-      // More robust quantity parsing
-      String quantityText = _productQty.text.trim();
-      int parsedQuantity = 0;
-
-      if (quantityText.isNotEmpty) {
-        int? temp = int.tryParse(quantityText);
-        if (temp != null) {
-          parsedQuantity = temp;
-        } else {
-          print('Failed to parse quantity: $quantityText');
-          // Try to extract numbers only
-          String numbersOnly = quantityText.replaceAll(RegExp(r'[^0-9]'), '');
-          temp = int.tryParse(numbersOnly);
-          if (temp != null) {
-            parsedQuantity = temp;
-            print('After extracting numbers only: $parsedQuantity');
-          } else {
-            // If parsing still fails, get the current value from Firebase
-            try {
-              Map<String, dynamic>? currentProductData =
-                  await _firebaseService.getProduct(widget.productID);
-              var fbQuantity = currentProductData?['quantity'];
-              if (fbQuantity is double) {
-                parsedQuantity = fbQuantity.toInt();
-              } else if (fbQuantity is int) {
-                parsedQuantity = fbQuantity;
-              } else {
-                parsedQuantity = int.tryParse(fbQuantity.toString()) ?? 0;
-              }
-              print('Using original quantity from Firebase: $parsedQuantity');
-            } catch (e) {
-              print('Error getting original quantity: $e');
-              parsedQuantity = 0;
-            }
-          }
-        }
-      } else {
-        // If the field is empty, try to get the current value from Firebase
-        try {
-          Map<String, dynamic>? currentProductData =
-              await _firebaseService.getProduct(widget.productID);
-          var fbQuantity = currentProductData?['quantity'];
-          if (fbQuantity is double) {
-            parsedQuantity = fbQuantity.toInt();
-          } else if (fbQuantity is int) {
-            parsedQuantity = fbQuantity;
-          } else {
-            parsedQuantity = int.tryParse(fbQuantity.toString()) ?? 0;
-          }
-          print(
-              'Field was empty, using original quantity from Firebase: $parsedQuantity');
-        } catch (e) {
-          print('Error getting original quantity for empty field: $e');
-          parsedQuantity = 0;
-        }
+      final productId = int.tryParse(widget.productID);
+      if (productId == null) {
+        throw Exception('Invalid product ID');
       }
 
-      // Ensure quantity is non-negative
-      if (parsedQuantity < 0) {
-        parsedQuantity = 0;
+      final pharmacyId =
+          Provider.of<TenantProvider>(context, listen: false).pharmacyId;
+      if (pharmacyId == null) {
+        throw Exception('No active pharmacy session');
       }
 
-      // Prepare updated product data
-      Map<String, dynamic> updatedProductData = {
-        'name': _productName.text.trim(),
-        'price': double.tryParse(_productPrice.text) ?? 0.0,
-        'quantity': parsedQuantity,
-        'category': _productCategory.text.trim(),
-        'expiry': _productExpiry.text.trim(),
-      };
+      final parsedQuantity = int.tryParse(_productQty.text.trim()) ?? 0;
+      final parsedExpiry = _productExpiry.text.trim().isNotEmpty
+          ? DateFormat('yyyy-MM-dd').parse(_productExpiry.text.trim())
+          : null;
 
-      print('Final product data to save: $updatedProductData');
+      final updatedRows = await (appDb.update(appDb.medicines)
+            ..where((t) => t.id.equals(productId))
+            ..where((t) => t.pharmacyId.equals(pharmacyId)))
+          .write(
+        MedicinesCompanion(
+          name: drift.Value(_productName.text.trim()),
+          price: drift.Value(double.tryParse(_productPrice.text) ?? 0.0),
+          stock: drift.Value(parsedQuantity < 0 ? 0 : parsedQuantity),
+          category: drift.Value(_productCategory.text.trim()),
+          expiryDate: drift.Value(parsedExpiry),
+        ),
+      );
 
-      // Update product in Firebase
-      await _firebaseService.updateProduct(
-          widget.productID, updatedProductData);
+      if (updatedRows == 0) {
+        throw Exception('Product not found');
+      }
 
       if (!mounted) return; // Check mounted after async operation
 
@@ -387,7 +338,25 @@ class _EditProductState extends State<EditProduct> {
           _isSaving = true;
         });
 
-        await _firebaseService.deleteProduct(widget.productID);
+        final productId = int.tryParse(widget.productID);
+        if (productId == null) {
+          throw Exception('Invalid product ID');
+        }
+
+        final pharmacyId =
+            Provider.of<TenantProvider>(context, listen: false).pharmacyId;
+        if (pharmacyId == null) {
+          throw Exception('No active pharmacy session');
+        }
+
+        final deletedRows = await (appDb.delete(appDb.medicines)
+              ..where((t) => t.id.equals(productId))
+              ..where((t) => t.pharmacyId.equals(pharmacyId)))
+            .go();
+
+        if (deletedRows == 0) {
+          throw Exception('Product not found');
+        }
 
         if (!mounted) return; // Check mounted after async operation
 

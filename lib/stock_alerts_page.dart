@@ -322,8 +322,9 @@ class _StockAlertsPageState extends State<StockAlertsPage>
 
   Widget _buildAlertsList(List<StockAlert> alerts) {
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final sortedAlerts = List<StockAlert>.from(alerts);
 
-    if (alerts.isEmpty) {
+    if (sortedAlerts.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -347,7 +348,7 @@ class _StockAlertsPageState extends State<StockAlertsPage>
     }
 
     // Sort alerts by severity (most critical first) and then by time
-    alerts.sort((a, b) {
+    sortedAlerts.sort((a, b) {
       // First sort by severity (danger > critical > warning)
       final severityOrder = {
         AlertSeverity.danger: 0,
@@ -365,10 +366,10 @@ class _StockAlertsPageState extends State<StockAlertsPage>
 
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: alerts.length,
+      itemCount: sortedAlerts.length,
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
-        final alert = alerts[index];
+        final alert = sortedAlerts[index];
         return _buildDetailedAlertCard(alert, themeProvider);
       },
     );

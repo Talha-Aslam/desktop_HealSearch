@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:quickalert/models/quickalert_type.dart';
 import 'package:quickalert/widgets/quickalert_dialog.dart';
@@ -14,216 +16,79 @@ class Reports extends StatefulWidget {
   _ReportsState createState() => _ReportsState();
 }
 
-class _ReportsState extends State<Reports> {
+class _ReportsState extends State<Reports> with WidgetsBindingObserver {
   List<Map<String, dynamic>> reports = [];
   String _selectedPeriod = 'All';
   String _selectedType = 'All';
   String _sortBy = 'Date (Latest)';
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  DateTime? _lastRefreshedAt;
+  Timer? _autoRefreshTimer;
   final ReportsService _reportsService = ReportsService();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadReports();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _loadReports(silent: true);
+    });
   }
 
-  Future<void> _loadReports() async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
 
-      print('=== REPORTS PAGE: Loading reports from ReportsService ===');
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadReports(silent: true);
+    }
+  }
+
+  Future<void> _loadReports({bool silent = false}) async {
+    try {
+      if (!silent && mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isRefreshing = true;
+        });
+      }
+
       List<Map<String, dynamic>> loadedReports =
           await _reportsService.getAllReports();
 
-      print('✅ SUCCESS: Loaded ${loadedReports.length} REAL DATA reports');
-
-      // Display notification about real data
-      if (mounted && loadedReports.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                '✅ Showing ${loadedReports.length} real-time reports generated from your actual data'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+      if (!mounted) return;
 
       setState(() {
         reports = loadedReports;
         _isLoading = false;
+        _isRefreshing = false;
+        _lastRefreshedAt = DateTime.now();
       });
     } catch (e) {
-      print('❌ ERROR loading real reports: $e');
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _isRefreshing = false;
       });
 
-      // Check if we have any real data
-      _checkRealDataAvailability();
-
-      // Load dummy data as fallback
-      _loadDummyReports();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load live reports: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
-  }
-
-  Future<void> _checkRealDataAvailability() async {
-    try {
-      print('=== CHECKING REAL DATA AVAILABILITY ===');
-
-      // Check if user has any sales data
-      final salesReport = await _reportsService.generateSalesReport();
-      print('📊 Sales Report Data: ${salesReport['data']}');
-
-      // Check if user has any product data
-      final inventoryReport = await _reportsService.generateInventoryReport();
-      print('📦 Inventory Report Data: ${inventoryReport['data']}');
-
-      int totalSales = salesReport['data']['totalOrders'] ?? 0;
-      int totalProducts = inventoryReport['data']['totalItems'] ?? 0;
-      double salesAmount = salesReport['data']['totalSales'] ?? 0.0;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('⚠️ Showing sample data as fallback.\n'
-                'Real data available: $totalSales sales (\$${salesAmount.toStringAsFixed(2)}), $totalProducts products'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
-    } catch (e) {
-      print('❌ Error checking real data: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                '⚠️ No real data available. Showing sample reports for demonstration.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-    }
-  }
-
-  void _loadDummyReports() {
-    print('=== LOADING DUMMY/SAMPLE DATA AS FALLBACK ===');
-
-    // Simulate loading time
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                '📋 Loaded sample reports for demonstration. Create sales in POS to see real data.'),
-            backgroundColor: Colors.blue,
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-
-      // Dummy data for reports with more comprehensive information
-      var dummyReports = [
-        {
-          "id": "R001",
-          "title": "Monthly Sales Summary",
-          "description": "Overall sales performance for the last month.",
-          "type": "Sales",
-          "date": DateTime.now().subtract(const Duration(days: 2)),
-          "status": "Completed",
-          "data": {
-            "totalSales": 24500,
-            "itemsSold": 132,
-            "topProduct": "Paracetamol 500mg"
-          }
-        },
-        {
-          "id": "R002",
-          "title": "Inventory Status Report",
-          "description":
-              "Current inventory levels and items that need reordering.",
-          "type": "Inventory",
-          "date": DateTime.now().subtract(const Duration(days: 5)),
-          "status": "Completed",
-          "data": {"totalItems": 246, "lowStock": 18, "outOfStock": 3}
-        },
-        {
-          "id": "R003",
-          "title": "Customer Insights",
-          "description":
-              "Analysis of customer behaviors and frequent purchases.",
-          "type": "Customer",
-          "date": DateTime.now().subtract(const Duration(days: 8)),
-          "status": "Completed",
-          "data": {
-            "totalCustomers": 85,
-            "newCustomers": 12,
-            "repeatCustomers": 68
-          }
-        },
-        {
-          "id": "R004",
-          "title": "Quarterly Financial Report",
-          "description":
-              "Financial performance for the last quarter including revenue and expenses.",
-          "type": "Financial",
-          "date": DateTime.now().subtract(const Duration(days: 15)),
-          "status": "Completed",
-          "data": {"revenue": 78400, "expenses": 52600, "profit": 25800}
-        },
-        {
-          "id": "R005",
-          "title": "Product Performance Analysis",
-          "description": "Analysis of best and worst performing products.",
-          "type": "Products",
-          "date": DateTime.now().subtract(const Duration(days: 20)),
-          "status": "Completed",
-          "data": {
-            "topSellingProduct": "Aspirin 300mg",
-            "worstSellingProduct": "Vitamin B Complex",
-            "totalProducts": 120
-          }
-        },
-        {
-          "id": "R006",
-          "title": "Annual Business Overview",
-          "description":
-              "Comprehensive annual business overview with forecasts.",
-          "type": "Financial",
-          "date": DateTime.now().subtract(const Duration(days: 60)),
-          "status": "Completed",
-          "data": {
-            "annualRevenue": 285000,
-            "growthRate": "12.5%",
-            "projectedGrowth": "15.2%"
-          }
-        },
-        {
-          "id": "R007",
-          "title": "Supply Chain Performance",
-          "description":
-              "Analysis of supply chain efficiency and vendor relations.",
-          "type": "Inventory",
-          "date": DateTime.now().subtract(const Duration(days: 25)),
-          "status": "Pending",
-          "data": {
-            "onTimeDelivery": "92%",
-            "averageDeliveryTime": "3.2 days",
-            "topVendor": "MediSupplier Inc."
-          }
-        },
-      ];
-
-      setState(() {
-        reports = dummyReports;
-        _isLoading = false;
-      });
-    });
   }
 
   void _showReportDetails(
@@ -550,9 +415,15 @@ class _ReportsState extends State<Reports> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: _isRefreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
             tooltip: 'Refresh Reports',
-            onPressed: _loadReports,
+            onPressed: _isRefreshing ? null : () => _loadReports(),
           ),
           const SizedBox(width: 8),
         ],
@@ -573,16 +444,10 @@ class _ReportsState extends State<Reports> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16.0, vertical: 8.0),
                     decoration: BoxDecoration(
-                      color: reports.any((r) =>
-                              r['id']?.toString().startsWith('R0') == true)
-                          ? Colors.orange.withOpacity(0.1)
-                          : Colors.green.withOpacity(0.1),
+                      color: Colors.green.withOpacity(0.1),
                       border: Border(
                         bottom: BorderSide(
-                          color: reports.any((r) =>
-                                  r['id']?.toString().startsWith('R0') == true)
-                              ? Colors.orange.withOpacity(0.3)
-                              : Colors.green.withOpacity(0.3),
+                          color: Colors.green.withOpacity(0.3),
                           width: 1,
                         ),
                       ),
@@ -590,24 +455,16 @@ class _ReportsState extends State<Reports> {
                     child: Row(
                       children: [
                         Icon(
-                          reports.any((r) =>
-                                  r['id']?.toString().startsWith('R0') == true)
-                              ? Icons.science
-                              : Icons.verified,
-                          color: reports.any((r) =>
-                                  r['id']?.toString().startsWith('R0') == true)
-                              ? Colors.orange
-                              : Colors.green,
+                          _isRefreshing ? Icons.sync : Icons.verified,
+                          color: Colors.green,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
                         Flexible(
                           child: Text(
-                            reports.any((r) =>
-                                    r['id']?.toString().startsWith('R0') ==
-                                    true)
-                                ? '📋 Showing sample reports for demonstration. Create sales in POS to see real data.'
-                                : '✅ Showing real-time reports generated from your actual business data.',
+                            _lastRefreshedAt == null
+                                ? 'Loading live reports from your actual business data...'
+                                : '✅ Showing live reports from your actual business data. Last refreshed at ${DateFormat('HH:mm:ss').format(_lastRefreshedAt!)}',
                             style: TextStyle(
                               color: themeProvider.textColor,
                               fontSize: 13,
@@ -617,16 +474,16 @@ class _ReportsState extends State<Reports> {
                             maxLines: 2,
                           ),
                         ),
-                        if (reports.any((r) =>
-                            r['id']?.toString().startsWith('R0') == true))
+                        if (_lastRefreshedAt != null)
                           TextButton.icon(
-                            onPressed: () =>
-                                Navigator.pushNamed(context, '/pos'),
-                            icon: const Icon(Icons.point_of_sale, size: 16),
-                            label: const Text('Go to POS',
+                            onPressed: _isRefreshing
+                                ? null
+                                : () => _loadReports(silent: true),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Refresh',
                                 style: TextStyle(fontSize: 12)),
                             style: TextButton.styleFrom(
-                              foregroundColor: Colors.orange,
+                              foregroundColor: Colors.green,
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 4),
                             ),

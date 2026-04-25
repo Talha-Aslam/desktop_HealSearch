@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/healsearch_branding.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Sidebar extends StatefulWidget {
   const Sidebar({super.key});
@@ -12,40 +11,89 @@ class Sidebar extends StatefulWidget {
   State<Sidebar> createState() => _SidebarState();
 }
 
-class _SidebarState extends State<Sidebar> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  Map<String, dynamic>? _userData;
+class _SidebarState extends State<Sidebar> with WidgetsBindingObserver {
+  final SupabaseClient _supabase = Supabase.instance.client;
+  Map<String, dynamic>? _profileData;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadUserData();
   }
 
-  Future<void> _loadUserData() async {
-    if (_auth.currentUser != null) {
-      try {
-        DocumentSnapshot userDoc = await _firestore
-            .collection('pharmacies')
-            .doc(_auth.currentUser!.uid)
-            .get();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
-        if (userDoc.exists) {
-          setState(() {
-            _userData = userDoc.data() as Map<String, dynamic>?;
-            _isLoading = false;
-          });
-        }
-      } catch (e) {
-        print('Error loading user data: $e');
-      }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadUserData(showLoading: false);
+    }
+  }
+
+  String _resolveDisplayName(User? user, Map<String, dynamic>? profile) {
+    if (profile != null) {
+      final name = profile['name'];
+      if (name is String && name.trim().isNotEmpty) return name;
+
+      final fullName = profile['full_name'];
+      if (fullName is String && fullName.trim().isNotEmpty) return fullName;
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    final metadataName = user?.userMetadata?['name']?.toString();
+    if (metadataName != null && metadataName.trim().isNotEmpty) {
+      return metadataName;
+    }
+
+    final metadataFullName = user?.userMetadata?['full_name']?.toString();
+    if (metadataFullName != null && metadataFullName.trim().isNotEmpty) {
+      return metadataFullName;
+    }
+
+    return 'User';
+  }
+
+  Future<void> _loadUserData({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _profileData = null;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final profile = await _supabase
+          .from('user_profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() {
+        _profileData = profile;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading sidebar user data: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -152,6 +200,12 @@ class _SidebarState extends State<Sidebar> {
                 ),
                 _buildListTile(
                   context: context,
+                  icon: Icons.upload_file,
+                  text: 'Manage Data',
+                  route: '/uploadData',
+                ),
+                _buildListTile(
+                  context: context,
                   icon: Icons.inventory_2,
                   text: 'Stock Alerts',
                   route: '/stock-alerts',
@@ -182,12 +236,6 @@ class _SidebarState extends State<Sidebar> {
                 ),
                 _buildListTile(
                   context: context,
-                  icon: Icons.chat,
-                  text: 'ChatBot',
-                  route: '/chatBot',
-                ),
-                _buildListTile(
-                  context: context,
                   icon: Icons.logout,
                   text: 'Logout',
                   route: '/login',
@@ -195,7 +243,7 @@ class _SidebarState extends State<Sidebar> {
                   onTap: () async {
                     // Sign out the user before navigating
                     try {
-                      await _auth.signOut();
+                      await _supabase.auth.signOut();
                       Navigator.pushNamedAndRemoveUntil(
                           context, '/login', (Route<dynamic> route) => false);
                     } catch (e) {
@@ -232,10 +280,10 @@ class _SidebarState extends State<Sidebar> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _userData != null
-                                  ? _userData!['name'] ?? 'User'
-                                  : (_auth.currentUser?.displayName ??
-                                      'Guest User'),
+                              _resolveDisplayName(
+                                _supabase.auth.currentUser,
+                                _profileData,
+                              ),
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: themeProvider.isDarkMode
@@ -245,10 +293,8 @@ class _SidebarState extends State<Sidebar> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              _userData != null
-                                  ? _userData!['email'] ?? 'No email'
-                                  : (_auth.currentUser?.email ??
-                                      'Not logged in'),
+                              _supabase.auth.currentUser?.email ??
+                                  'Not logged in',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: themeProvider.isDarkMode

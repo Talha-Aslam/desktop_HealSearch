@@ -1,6 +1,8 @@
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/imports.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -10,119 +12,145 @@ class Login extends StatefulWidget {
 }
 
 class _LoginState extends State<Login> {
+  static final RegExp _emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+
+  final _supabase = Supabase.instance.client;
   final TextEditingController email = TextEditingController();
   final TextEditingController password = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
   bool _isLoading = false;
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
 
-  String validateLogin() {
-    if (email.text == "") {
-      return "emptyEmail"; // Error Message
-    } else if (password.text == "") {
-      return "emptyPassword"; // Error Message
-    } else {
-      return "valid"; // Valid Message
-    }
+  @override
+  void dispose() {
+    email.dispose();
+    password.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _showMessage(
+    String message, {
+    Color? backgroundColor,
+    Duration duration = const Duration(seconds: 3),
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: duration,
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration(
+    ThemeProvider themeProvider, {
+    required String label,
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
+    final filled = !themeProvider.isDarkMode;
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white),
+      hintText: hint,
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
+      prefixIcon: Icon(icon, color: Colors.white),
+      suffixIcon: suffixIcon,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Colors.white, width: 2),
+      ),
+      errorStyle: const TextStyle(
+        color: Colors.yellow,
+        fontWeight: FontWeight.bold,
+      ),
+      filled: filled,
+      fillColor: filled ? Colors.black.withOpacity(0.3) : Colors.transparent,
+    );
   }
 
   Future<void> checkLogin(BuildContext context) async {
-    String validationMessage = validateLogin();
-    if (validationMessage == "valid") {
-      setState(() {
-        _isLoading = true;
-      });
+    if (_isLoading) return;
 
-      try {
-        // Attempt to sign in with Firebase Auth
-        final userCredential = await _auth.signInWithEmailAndPassword(
-          email: email.text.trim(),
-          password: password.text,
-        );
+    final enteredEmail = email.text.trim();
+    final enteredPassword = password.text;
 
-        if (userCredential.user != null) {
-          // Login successful
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Login successful!')),
-          );
-          Navigator.pushReplacementNamed(context, '/dashboard');
-        }
-      } on FirebaseAuthException catch (e) {
-        // Handle specific Firebase Auth errors
-        String errorMessage = 'An error occurred during login';
+    if (enteredEmail.isEmpty) {
+      _showMessage('Please enter your email', backgroundColor: Colors.orange);
+      return;
+    }
+    if (!_emailRegex.hasMatch(enteredEmail)) {
+      _showMessage('Please enter a valid email address',
+          backgroundColor: Colors.orange);
+      return;
+    }
+    if (enteredPassword.isEmpty) {
+      _showMessage('Please enter your password',
+          backgroundColor: Colors.orange);
+      return;
+    }
 
-        switch (e.code) {
-          case 'user-not-found':
-            errorMessage = 'No account found with this email address';
-            break;
-          case 'wrong-password':
-            errorMessage = 'Incorrect password. Please try again';
-            break;
-          case 'invalid-email':
-            errorMessage = 'Please enter a valid email address';
-            break;
-          case 'user-disabled':
-            errorMessage = 'This account has been disabled. Contact support';
-            break;
-          case 'too-many-requests':
-            errorMessage = 'Too many failed attempts. Please try again later';
-            break;
-          case 'invalid-credential':
-            errorMessage =
-                'Invalid email or password. Please check your credentials';
-            break;
-          case 'network-request-failed':
-            errorMessage =
-                'Network error. Please check your internet connection';
-            break;
-          case 'operation-not-allowed':
-            errorMessage = 'Email/password sign-in is not enabled';
-            break;
-          default:
-            errorMessage = 'Login failed: ${e.message ?? 'Unknown error'}';
-        }
+    setState(() {
+      _isLoading = true;
+    });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Dismiss',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
-        );
-      } catch (e) {
-        // Handle other errors
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } finally {
+    try {
+      // Attempt to sign in with Supabase Auth
+      final AuthResponse response = await _supabase.auth.signInWithPassword(
+        email: enteredEmail,
+        password: enteredPassword,
+      );
+
+      if (response.user != null) {
+        // Fetch the user's pharmacy profile to get the Tenant ID
+        final profileData = await _supabase
+            .from('user_profiles')
+            .select('pharmacy_id')
+            .eq('id', response.user!.id)
+            .single();
+
+        final pharmacyId = profileData['pharmacy_id'] as String;
+
+        if (!context.mounted) return;
+
+        Provider.of<TenantProvider>(context, listen: false)
+            .setPharmacyId(pharmacyId);
+
+        _showMessage('Login successful!', backgroundColor: Colors.green);
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
+    } on AuthException catch (e) {
+      _showMessage(
+        'Login failed: ${e.message}',
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      _showMessage(
+        'Login error: ${e.toString()}',
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      );
+    } finally {
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });
       }
-    } else {
-      // Show validation error
-      String fieldName =
-          validationMessage == "emptyEmail" ? "email" : "password";
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please enter your $fieldName'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
-        ),
-      );
     }
   }
 
@@ -135,35 +163,6 @@ class _LoginState extends State<Login> {
     final textColor = Colors.white;
 
     return Scaffold(
-      appBar: AppBar(
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: themeProvider.gradientColors,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        title: const Text(
-          'Login',
-          style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white),
-        ),
-        actions: [
-          // Theme toggle button
-          IconButton(
-            icon: Icon(
-              themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              themeProvider.toggleTheme();
-            },
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
       body: Container(
         decoration: BoxDecoration(
           color: themeProvider.scaffoldBackgroundColor,
@@ -171,23 +170,24 @@ class _LoginState extends State<Login> {
         child: Center(
           child: SingleChildScrollView(
             child: Container(
-              width: size.width > 600 ? 600 : size.width * 0.9,
-              padding: const EdgeInsets.all(24.0),
+              width: size.width > 600 ? 500 : size.width * 0.9,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 40.0, vertical: 48.0),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16.0),
+                borderRadius: BorderRadius.circular(24.0),
                 gradient: LinearGradient(
                   colors: themeProvider.gradientColors,
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
                 boxShadow: [
                   BoxShadow(
                     color: themeProvider.isDarkMode
-                        ? Colors.black.withOpacity(0.3)
-                        : Colors.grey.withOpacity(0.3),
-                    spreadRadius: 2,
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+                        ? Colors.black.withOpacity(0.5)
+                        : Colors.grey.withOpacity(0.5),
+                    spreadRadius: 4,
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
                   ),
                 ],
               ),
@@ -198,54 +198,41 @@ class _LoginState extends State<Login> {
                   children: [
                     // Login logo or icon
                     Icon(
-                      Icons.account_circle,
-                      size: 80,
+                      Icons.local_pharmacy,
+                      size: 96,
                       color: textColor,
                     ),
                     const SizedBox(height: 16.0),
                     // Login title
                     Text(
-                      'Login Account',
+                      'Welcome Back',
                       style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
                         color: textColor,
                       ),
                     ),
-                    const SizedBox(height: 24.0),
+                    const SizedBox(height: 8.0),
+                    Text(
+                      'Sign in to manage your pharmacy',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: textColor.withOpacity(0.8),
+                      ),
+                    ),
+                    const SizedBox(height: 32.0),
                     // Email field
                     TextFormField(
                       controller: email,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        labelStyle: TextStyle(color: Colors.white),
-                        hintText: 'Enter your email address',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon:
-                            const Icon(Icons.email, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider
-                            .isDarkMode, // Only fill background in light mode
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : // Darker background for light mode
-                            Colors.transparent, // Keep transparent in dark mode
+                      focusNode: _emailFocusNode,
+                      textInputAction: TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          _passwordFocusNode.requestFocus(),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Email Address',
+                        hint: 'Enter your email address',
+                        icon: Icons.email,
                       ),
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.emailAddress,
@@ -260,13 +247,14 @@ class _LoginState extends State<Login> {
                     // Password field
                     TextFormField(
                       controller: password,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        labelStyle: const TextStyle(color: Colors.white),
-                        hintText: 'Enter your password',
-                        hintStyle:
-                            TextStyle(color: Colors.white.withOpacity(0.7)),
-                        prefixIcon: const Icon(Icons.lock, color: Colors.white),
+                      focusNode: _passwordFocusNode,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => checkLogin(context),
+                      decoration: _buildInputDecoration(
+                        themeProvider,
+                        label: 'Password',
+                        hint: 'Enter your password',
+                        icon: Icons.lock,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword
@@ -280,28 +268,6 @@ class _LoginState extends State<Login> {
                             });
                           },
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Colors.white),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: Colors.white, width: 2),
-                        ),
-                        errorStyle: const TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: !themeProvider
-                            .isDarkMode, // Only fill background in light mode
-                        fillColor: !themeProvider.isDarkMode
-                            ? Colors.black.withOpacity(0.3)
-                            : // Darker background for light mode
-                            Colors.transparent, // Keep transparent in dark mode
                       ),
                       style: const TextStyle(color: Colors.white),
                       obscureText: _obscurePassword,
@@ -365,17 +331,41 @@ class _LoginState extends State<Login> {
                                 elevation: 4,
                               ),
                               onPressed: () => checkLogin(context),
-                              child: Text(
-                                'Login',
-                                style: TextStyle(
-                                  color: themeProvider.gradientColors[0],
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.login,
+                                      color: themeProvider.gradientColors[0]),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Secure Login',
+                                    style: TextStyle(
+                                      color: themeProvider.gradientColors[0],
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                     ),
-                    const SizedBox(height: 16.0),
+                    const SizedBox(height: 24.0),
+                    // Theme toggler built into login bottom
+                    TextButton.icon(
+                      icon: Icon(
+                        themeProvider.isDarkMode
+                            ? Icons.light_mode
+                            : Icons.dark_mode,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        themeProvider.isDarkMode ? 'Light Mode' : 'Dark Mode',
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () => themeProvider.toggleTheme(),
+                    ),
+                    const SizedBox(height: 8.0),
                     // Registration Link
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class SalesService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -28,7 +27,7 @@ class SalesService {
   Future<List<Map<String, dynamic>>> getSales() async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -67,7 +66,7 @@ class SalesService {
   Future<List<Map<String, dynamic>>> getTodaySales() async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -112,7 +111,7 @@ class SalesService {
   Future<Map<String, dynamic>?> getSale(String saleId) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
@@ -140,15 +139,31 @@ class SalesService {
       String productId, int quantitySold) async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 
-      // Update product quantity in Firestore
-      await _firestore
-          .collection('products')
-          .doc(productId)
-          .update({'quantity': FieldValue.increment(-quantitySold)});
+      var docRef = _firestore.collection('products').doc(productId);
+      var docSnap = await docRef.get();
+
+      if (docSnap.exists && docSnap.data() != null) {
+        var data = docSnap.data() as Map<String, dynamic>;
+        int currentQty = 0;
+
+        // Safely parse quantity even if it was accidentally saved as a String
+        if (data['quantity'] != null) {
+          if (data['quantity'] is String) {
+            currentQty = int.tryParse(data['quantity']) ?? 0;
+          } else if (data['quantity'] is num) {
+            currentQty = (data['quantity'] as num).toInt();
+          }
+        }
+
+        int newQty = currentQty - quantitySold;
+
+        // Save back strictly as a number
+        await docRef.update({'quantity': newQty});
+      }
     } catch (e) {
       rethrow;
     }
@@ -158,7 +173,7 @@ class SalesService {
   Future<Map<String, dynamic>> getSalesStats() async {
     try {
       // Check if user is logged in
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         throw Exception('User not logged in');
       }
 

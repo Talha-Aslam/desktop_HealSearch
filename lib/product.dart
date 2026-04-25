@@ -1,9 +1,15 @@
+import 'dart:async';
+
+import 'package:desktop_search_a_holic/main.dart';
+import 'package:desktop_search_a_holic/data/database.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/sidebar.dart';
-import 'package:desktop_search_a_holic/firebase_service.dart';
 import 'package:desktop_search_a_holic/stock_alerts_widget.dart';
+import 'package:desktop_search_a_holic/tenant_provider.dart';
+import 'package:drift/drift.dart' as drift;
 
 class Product extends StatefulWidget {
   const Product({super.key});
@@ -15,163 +21,139 @@ class Product extends StatefulWidget {
 class _ProductState extends State<Product> {
   List<Map<String, dynamic>> products = [];
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
   List<Map<String, dynamic>> filteredProducts = [];
-  final FirebaseService _firebaseService = FirebaseService();
   bool _isLoading = true;
+  bool _isFetchingMore = false;
+  bool _hasMore = true;
+
+  static const int _pageSize = 120;
+  int _offset = 0;
+  String _activeSearch = '';
+  String _activeCategory = 'All';
 
   @override
   void initState() {
     super.initState();
-    _loadProductsFromFirestore();
+    _scrollController.addListener(_onScroll);
+    _loadProductsFromFirestore(reset: true);
   }
 
-  Future<void> _loadProductsFromFirestore() async {
+  Future<void> _loadProductsFromFirestore({bool reset = false}) async {
     try {
-      if (!mounted) return; // Check mounted before starting
+      if (!mounted) return;
 
-      setState(() {
-        _isLoading = true;
-      });
-
-      print('🔄 Loading products from Firestore...');
-      List<Map<String, dynamic>> loadedProducts =
-          await _firebaseService.getProducts();
-
-      if (!mounted) return; // Check mounted after async operation
-
-      // Debug logging
-      print('Products loaded from Firestore: ${loadedProducts.length}');
-      for (var product in loadedProducts) {
-        print(
-            'Product: ${product['name']}, ID: ${product['id']}, Created: ${product['createdAt']}');
+      if (reset) {
+        setState(() {
+          _isLoading = true;
+          _hasMore = true;
+          _offset = 0;
+        });
+      } else {
+        if (_isFetchingMore || !_hasMore) return;
+        setState(() {
+          _isFetchingMore = true;
+        });
       }
 
+      print('🔄 Loading products from local DB...');
+      final pharmacyId =
+          Provider.of<TenantProvider>(context, listen: false).pharmacyId;
+
+      if (pharmacyId == null) {
+        throw Exception('No active pharmacy session');
+      }
+
+      final query = appDb.select(appDb.medicines)
+        ..where((t) => t.pharmacyId.equals(pharmacyId));
+
+      if (_activeSearch.trim().isNotEmpty) {
+        query.where((t) => t.name.like('%${_activeSearch.trim()}%'));
+      }
+
+      if (_activeCategory != 'All') {
+        query.where((t) => t.category.equals(_activeCategory));
+      }
+
+      final localMedicines = await (query
+            ..orderBy([
+              (t) => drift.OrderingTerm(
+                    expression: t.id,
+                    mode: drift.OrderingMode.desc,
+                  )
+            ])
+            ..limit(_pageSize, offset: _offset))
+          .get();
+
+      if (!mounted) return;
+
+      final loadedProducts = localMedicines.map((m) {
+        return {
+          'id': m.id.toString(),
+          'pharmacyId': m.pharmacyId,
+          'name': m.name,
+          'price': m.price,
+          'quantity': m.stock,
+          'category': m.category ?? 'Other',
+          'expiry': m.expiryDate != null
+              ? DateFormat('yyyy-MM-dd').format(m.expiryDate!)
+              : '',
+        };
+      }).toList();
+
       setState(() {
-        products = loadedProducts;
-        // Apply current search filter to new products
-        if (_searchController.text.isEmpty) {
-          filteredProducts = loadedProducts;
+        if (reset) {
+          products = loadedProducts;
         } else {
-          _searchProducts(_searchController.text);
+          products.addAll(loadedProducts);
         }
+        filteredProducts = products;
+        _offset += loadedProducts.length;
+        _hasMore = loadedProducts.length == _pageSize;
         _isLoading = false;
+        _isFetchingMore = false;
       });
 
-      print(
-          'Products state updated - total: ${products.length}, filtered: ${filteredProducts.length}');
-      print('🔄 _loadProductsFromFirestore completed successfully');
+      print('Products state updated - total: ${products.length}');
     } catch (e) {
-      if (!mounted) return; // Check mounted before setState
+      if (!mounted) return;
 
       setState(() {
         _isLoading = false;
+        _isFetchingMore = false;
       });
 
-      print('❌ Error loading products from Firestore: $e');
+      print('❌ Error loading products from local DB: $e');
 
-      // Show error to user
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load products: ${e.toString()}'),
             backgroundColor: Colors.red,
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: _loadProductsFromFirestore,
-            ),
           ),
         );
-
-        // Load dummy data as fallback
-        _loadDummyProducts();
       }
     }
   }
 
-  void _loadDummyProducts() {
-    // Get current user email for dummy data
-    String? userEmail = _firebaseService.currentUser?.email;
-
-    // Dummy data for products with more details (fallback data)
-    var dummyProducts = [
-      {
-        "id": "dummy_1", // Add dummy IDs for fallback data
-        "name": "Paracetamol 500mg",
-        "price": 100,
-        "quantity": 10,
-        "category": "Medicine",
-        "expiry": "2025-12-31",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_2",
-        "name": "Aspirin 300mg",
-        "price": 200,
-        "quantity": 5,
-        "category": "Medicine",
-        "expiry": "2026-05-15",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_3",
-        "name": "Vitamins C",
-        "price": 150,
-        "quantity": 20,
-        "category": "Supplements",
-        "expiry": "2027-08-22",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_4",
-        "name": "Cough Syrup",
-        "price": 85,
-        "quantity": 15,
-        "category": "Medicine",
-        "expiry": "2025-10-30",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_5",
-        "name": "Bandages",
-        "price": 50,
-        "quantity": 30,
-        "category": "First Aid",
-        "expiry": "2028-01-01",
-        "userEmail": userEmail,
-      },
-      {
-        "id": "dummy_6",
-        "name": "Hand Sanitizer",
-        "price": 65,
-        "quantity": 25,
-        "category": "Hygiene",
-        "expiry": "2026-06-18",
-        "userEmail": userEmail,
-      },
-    ];
-
-    setState(() {
-      products = dummyProducts;
-      filteredProducts = dummyProducts;
-      _isLoading = false;
+  void _searchProducts(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 260), () {
+      _activeSearch = query;
+      _loadProductsFromFirestore(reset: true);
     });
   }
 
-  void _searchProducts(String query) {
-    if (query.isEmpty) {
-      setState(() {
-        filteredProducts = products;
-      });
+  void _onScroll() {
+    if (!_scrollController.hasClients || _isLoading || _isFetchingMore) {
       return;
     }
 
-    setState(() {
-      filteredProducts = products
-          .where((product) =>
-              product['name'].toLowerCase().contains(query.toLowerCase()))
-          .toList();
-    });
+    final threshold = _scrollController.position.maxScrollExtent - 200;
+    if (_scrollController.position.pixels >= threshold && _hasMore) {
+      _loadProductsFromFirestore(reset: false);
+    }
   }
 
   Future<void> _refreshProducts() async {
@@ -183,7 +165,7 @@ class _ProductState extends State<Product> {
         _isLoading = true;
       });
 
-      await _loadProductsFromFirestore();
+      await _loadProductsFromFirestore(reset: true);
       print('_refreshProducts completed successfully');
     } catch (e) {
       print('Error in _refreshProducts: $e');
@@ -228,12 +210,6 @@ class _ProductState extends State<Product> {
               print('Returned from add product page with result: $result');
               // Refresh products when returning from add product page
               if (result == true && mounted) {
-                print('Refreshing products after adding...');
-                // Add a small delay to ensure Firebase has processed the addition
-                await Future.delayed(const Duration(milliseconds: 100));
-                await _refreshProducts();
-                // Force a second refresh to ensure we get the latest data
-                await Future.delayed(const Duration(milliseconds: 200));
                 await _refreshProducts();
               }
             },
@@ -363,9 +339,19 @@ class _ProductState extends State<Product> {
                                 onRefresh: _refreshProducts,
                                 color: themeProvider.gradientColors[0],
                                 child: ListView.builder(
+                                  controller: _scrollController,
                                   padding: const EdgeInsets.all(16.0),
-                                  itemCount: filteredProducts.length,
+                                  itemCount: filteredProducts.length +
+                                      (_isFetchingMore ? 1 : 0),
                                   itemBuilder: (context, index) {
+                                    if (index >= filteredProducts.length) {
+                                      return const Padding(
+                                        padding: EdgeInsets.all(12.0),
+                                        child: Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                      );
+                                    }
                                     final product = filteredProducts[index];
                                     return Card(
                                       margin:
@@ -510,12 +496,6 @@ class _ProductState extends State<Product> {
           print('FloatingActionButton - returned with result: $result');
           // Refresh products when returning from add product page
           if (result == true && mounted) {
-            print('FloatingActionButton - refreshing products...');
-            // Add a small delay to ensure Firebase has processed the addition
-            await Future.delayed(const Duration(milliseconds: 100));
-            await _refreshProducts();
-            // Force a second refresh to ensure we get the latest data
-            await Future.delayed(const Duration(milliseconds: 200));
             await _refreshProducts();
           }
         },
@@ -633,14 +613,12 @@ class _ProductState extends State<Product> {
                     if (mounted) {
                       setState(() {
                         if (selectedCategory == 'All') {
-                          filteredProducts = products;
+                          _activeCategory = 'All';
                         } else {
-                          filteredProducts = products
-                              .where((product) =>
-                                  product['category'] == selectedCategory)
-                              .toList();
+                          _activeCategory = selectedCategory;
                         }
                       });
+                      _loadProductsFromFirestore(reset: true);
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -691,16 +669,32 @@ class _ProductState extends State<Product> {
                 Navigator.of(dialogContext).pop(); // Close dialog first
 
                 try {
-                  // Delete from Firestore if product has an ID
-                  if (product['id'] != null) {
-                    await _firebaseService.deleteProduct(product['id']);
+                  final productId = int.tryParse(product['id'].toString());
+                  if (productId == null) {
+                    throw Exception('Invalid product ID');
+                  }
+
+                  final pharmacyId =
+                      Provider.of<TenantProvider>(context, listen: false)
+                          .pharmacyId;
+                  if (pharmacyId == null) {
+                    throw Exception('No active pharmacy session');
+                  }
+
+                  final deleted = await (appDb.delete(appDb.medicines)
+                        ..where((t) => t.id.equals(productId))
+                        ..where((t) => t.pharmacyId.equals(pharmacyId)))
+                      .go();
+
+                  if (deleted == 0) {
+                    throw Exception('Product not found');
                   }
 
                   if (!mounted) return; // Check mounted after async operation
 
                   // Update local state
                   setState(() {
-                    products.removeWhere((p) => p['name'] == product['name']);
+                    products.removeWhere((p) => p['id'] == product['id']);
                     filteredProducts = List.from(products);
                   });
 
@@ -736,7 +730,9 @@ class _ProductState extends State<Product> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 }

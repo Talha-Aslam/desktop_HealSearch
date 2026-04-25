@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class BackupHistoryService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -33,7 +32,7 @@ class BackupHistoryService {
   // Get backup history for current user
   Future<List<Map<String, dynamic>>> getBackupHistory({int limit = 20}) async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         return [];
       }
 
@@ -76,7 +75,7 @@ class BackupHistoryService {
   // Get backup statistics
   Future<Map<String, dynamic>> getBackupStats() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         return {
           'totalBackups': 0,
           'successfulBackups': 0,
@@ -144,7 +143,7 @@ class BackupHistoryService {
   // Clean up old backup logs (keep only last 100 records)
   Future<void> cleanupOldLogs() async {
     try {
-      if (_auth.currentUser == null || _auth.currentUser!.email == null) {
+      if (_auth.currentUser == null) {
         return;
       }
 

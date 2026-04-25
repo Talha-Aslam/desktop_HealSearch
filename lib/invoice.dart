@@ -16,14 +16,16 @@ class Invoice extends StatefulWidget {
 
 class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
   final InvoiceService _invoiceService = InvoiceService();
+  List<Map<String, dynamic>> allInvoices = [];
   Map<String, dynamic>? currentInvoice;
   bool _isLoading = true;
+  bool _isFetchingInvoices = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadLatestInvoice();
+    _loadAllInvoices();
   }
 
   @override
@@ -36,60 +38,53 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // Refresh invoice when app comes to foreground
-      _loadLatestInvoice();
+      _loadAllInvoices();
     }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh invoice data when this page becomes active
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadLatestInvoice();
-      }
-    });
   }
 
-  Future<void> _loadLatestInvoice() async {
+  Future<void> _loadAllInvoices({bool showLoading = true}) async {
+    if (_isFetchingInvoices) return;
+    _isFetchingInvoices = true;
+
     try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      print('Loading latest invoice...');
-      Map<String, dynamic>? invoice = await _invoiceService.getLatestInvoice();
-
-      if (invoice != null) {
-        print('Invoice loaded successfully: ${invoice['invoiceNumber']}');
-      } else {
-        print('No invoice found - checking sales collection directly...');
-        // Try to get recent sales directly as a fallback
-        try {
-          List<Map<String, dynamic>> recentInvoices =
-              await _invoiceService.getRecentInvoices(limit: 1);
-          if (recentInvoices.isNotEmpty) {
-            invoice = recentInvoices.first;
-            print(
-                'Found invoice via fallback method: ${invoice['invoiceNumber']}');
-          } else {
-            print('No sales found in sales collection');
-          }
-        } catch (e) {
-          print('Error in fallback invoice loading: $e');
-        }
+      if (showLoading && mounted) {
+        setState(() {
+          _isLoading = true;
+        });
       }
 
+      print('Loading all invoices...');
+      List<Map<String, dynamic>> invoices =
+          await _invoiceService.getRecentInvoices(limit: 50);
+
+      if (!mounted) return;
+
       setState(() {
-        currentInvoice = invoice;
+        allInvoices = invoices;
+        if (allInvoices.isNotEmpty && currentInvoice == null) {
+          // Default to latest
+          currentInvoice = allInvoices.first;
+        } else if (allInvoices.isEmpty) {
+          currentInvoice = null;
+        }
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading invoice: $e');
-      setState(() {
-        _isLoading = false;
-        currentInvoice = null;
-      });
+      print('Error loading invoices: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          allInvoices = [];
+          currentInvoice = null;
+        });
+      }
+    } finally {
+      _isFetchingInvoices = false;
     }
   }
 
@@ -529,6 +524,72 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _confirmDeleteInvoice(Map<String, dynamic> invoice) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Invoice'),
+        content: Text(
+          'Are you sure you want to delete ${invoice['invoiceNumber'] ?? 'this invoice'}? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final deleted =
+          await _invoiceService.deleteInvoice(invoice['id'].toString());
+      if (!mounted) return;
+
+      if (!deleted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice not found or already deleted.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await _loadAllInvoices(showLoading: false);
+
+      if (!mounted) return;
+      setState(() {
+        if (currentInvoice != null &&
+            currentInvoice!['id'].toString() == invoice['id'].toString()) {
+          currentInvoice = allInvoices.isNotEmpty ? allInvoices.first : null;
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invoice deleted successfully.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to delete invoice: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -577,8 +638,21 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () {
+              if (currentInvoice != null) {
+                _confirmDeleteInvoice(currentInvoice!);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No invoice selected')),
+                );
+              }
+            },
+            tooltip: 'Delete Invoice',
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _loadLatestInvoice,
+            onPressed: _loadAllInvoices,
             tooltip: 'Load Latest Invoice',
           ),
           IconButton(
@@ -591,7 +665,7 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                   duration: Duration(seconds: 1),
                 ),
               );
-              await _loadLatestInvoice();
+              await _loadAllInvoices();
             },
             tooltip: 'Check for New Invoices',
           ),
@@ -608,7 +682,7 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                   color: themeProvider.gradientColors[0],
                 ),
               )
-            : currentInvoice == null
+            : allInvoices.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -647,339 +721,460 @@ class _InvoiceState extends State<Invoice> with WidgetsBindingObserver {
                       ],
                     ),
                   )
-                : SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Invoice header with summary information
-                        Container(
-                          padding: const EdgeInsets.all(16.0),
-                          margin: const EdgeInsets.all(16.0),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                themeProvider.gradientColors[0]
-                                    .withOpacity(0.1),
-                                themeProvider.gradientColors[1]
-                                    .withOpacity(0.1),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: themeProvider.gradientColors[0]
-                                  .withOpacity(0.3),
+                : Row(
+                    children: [
+                      // Sidebar List
+                      Container(
+                        width: 300,
+                        decoration: BoxDecoration(
+                          border: Border(
+                            right: BorderSide(
+                              color: themeProvider.textColor.withOpacity(0.1),
                               width: 1,
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.receipt,
-                                    color: themeProvider.gradientColors[0],
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Invoice #${currentInvoice!['invoiceNumber']}',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: themeProvider.textColor,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    DateFormat('MMM dd, yyyy')
-                                        .format(currentInvoice!['date']),
-                                    style: TextStyle(
-                                      color: themeProvider.textColor
-                                          .withOpacity(0.7),
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Customer:',
-                                        style: TextStyle(
-                                          color: themeProvider.textColor
-                                              .withOpacity(0.7),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      Text(
-                                        currentInvoice!['customerName'],
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: themeProvider.textColor,
-                                        ),
-                                      ),
-                                      if (currentInvoice!['customerPhone'] !=
-                                          'N/A') ...[
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          currentInvoice!['customerPhone'],
-                                          style: TextStyle(
-                                            color: themeProvider.textColor
-                                                .withOpacity(0.7),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'Status:',
-                                        style: TextStyle(
-                                          color: themeProvider.textColor
-                                              .withOpacity(0.7),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          currentInvoice!['status'],
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
                         ),
+                        child: ListView.builder(
+                          itemCount: allInvoices.length,
+                          itemBuilder: (context, index) {
+                            var inv = allInvoices[index];
+                            bool isSelected = currentInvoice != null &&
+                                inv['id'] == currentInvoice!['id'];
 
-                        // Invoice items
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16.0),
-                          decoration: BoxDecoration(
-                            color: themeProvider.cardBackgroundColor,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              // Column headers
-                              Container(
-                                padding: const EdgeInsets.all(16.0),
-                                decoration: BoxDecoration(
-                                  color: themeProvider.gradientColors[0]
-                                      .withOpacity(0.1),
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(12),
-                                    topRight: Radius.circular(12),
-                                  ),
+                            return ListTile(
+                              selected: isSelected,
+                              selectedTileColor: themeProvider.gradientColors[0]
+                                  .withOpacity(0.1),
+                              title: Text(
+                                inv['invoiceNumber']?.toString() ??
+                                    'INV-${inv['id']}',
+                                style: TextStyle(
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  color: themeProvider.textColor,
                                 ),
-                                child: Row(
+                              ),
+                              subtitle: Text(
+                                '${DateFormat('MMM dd, yy').format(inv['date'])} - \$${inv['total'].toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  color:
+                                      themeProvider.textColor.withOpacity(0.6),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    color: Colors.red),
+                                tooltip: 'Delete Invoice',
+                                onPressed: () => _confirmDeleteInvoice(inv),
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  currentInvoice = inv;
+                                });
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                      // Main Content
+                      Expanded(
+                        child: currentInvoice == null
+                            ? Center(
+                                child: Text(
+                                  'Select an invoice to preview',
+                                  style: TextStyle(
+                                      color: themeProvider.textColor
+                                          .withOpacity(0.5)),
+                                ),
+                              )
+                            : SingleChildScrollView(
+                                child: Column(
                                   children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        'Item',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: themeProvider.textColor,
+                                    // Invoice header with summary information
+                                    Container(
+                                      padding: const EdgeInsets.all(16.0),
+                                      margin: const EdgeInsets.all(16.0),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            themeProvider.gradientColors[0]
+                                                .withOpacity(0.1),
+                                            themeProvider.gradientColors[1]
+                                                .withOpacity(0.1),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: themeProvider.gradientColors[0]
+                                              .withOpacity(0.3),
+                                          width: 1,
                                         ),
                                       ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        'Qty',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: themeProvider.textColor,
-                                        ),
-                                        textAlign: TextAlign.center,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.receipt,
+                                                color: themeProvider
+                                                    .gradientColors[0],
+                                                size: 24,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Invoice #${currentInvoice!['invoiceNumber']}',
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color:
+                                                      themeProvider.textColor,
+                                                ),
+                                              ),
+                                              const Spacer(),
+                                              Text(
+                                                DateFormat('MMM dd, yyyy')
+                                                    .format(currentInvoice![
+                                                        'date']),
+                                                style: TextStyle(
+                                                  color: themeProvider.textColor
+                                                      .withOpacity(0.7),
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Customer:',
+                                                    style: TextStyle(
+                                                      color: themeProvider
+                                                          .textColor
+                                                          .withOpacity(0.7),
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    currentInvoice![
+                                                        'customerName'],
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeProvider
+                                                          .textColor,
+                                                    ),
+                                                  ),
+                                                  if (currentInvoice![
+                                                          'customerPhone'] !=
+                                                      'N/A') ...[
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      currentInvoice![
+                                                          'customerPhone'],
+                                                      style: TextStyle(
+                                                        color: themeProvider
+                                                            .textColor
+                                                            .withOpacity(0.7),
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.end,
+                                                children: [
+                                                  Text(
+                                                    'Status:',
+                                                    style: TextStyle(
+                                                      color: themeProvider
+                                                          .textColor
+                                                          .withOpacity(0.7),
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              12),
+                                                    ),
+                                                    child: Text(
+                                                      currentInvoice!['status'],
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    Expanded(
-                                      child: Text(
-                                        'Price',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: themeProvider.textColor,
-                                        ),
-                                        textAlign: TextAlign.center,
+
+                                    // Invoice items
+                                    Container(
+                                      margin: const EdgeInsets.symmetric(
+                                          horizontal: 16.0),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            themeProvider.cardBackgroundColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          // Column headers
+                                          Container(
+                                            padding: const EdgeInsets.all(16.0),
+                                            decoration: BoxDecoration(
+                                              color: themeProvider
+                                                  .gradientColors[0]
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  const BorderRadius.only(
+                                                topLeft: Radius.circular(12),
+                                                topRight: Radius.circular(12),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  flex: 2,
+                                                  child: Text(
+                                                    'Item',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeProvider
+                                                          .textColor,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Qty',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeProvider
+                                                          .textColor,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Price',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeProvider
+                                                          .textColor,
+                                                    ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Total',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: themeProvider
+                                                          .textColor,
+                                                    ),
+                                                    textAlign: TextAlign.right,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Invoice items
+                                          ...((currentInvoice!['items'] as List)
+                                              .map((item) {
+                                            final quantity =
+                                                item['quantity']?.toInt() ?? 0;
+                                            final price =
+                                                item['price']?.toDouble() ??
+                                                    0.0;
+                                            final total = quantity * price;
+
+                                            return Container(
+                                              padding:
+                                                  const EdgeInsets.all(16.0),
+                                              decoration: BoxDecoration(
+                                                border: Border(
+                                                  bottom: BorderSide(
+                                                    color: themeProvider
+                                                        .textColor
+                                                        .withOpacity(0.1),
+                                                    width: 0.5,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    flex: 2,
+                                                    child: Text(
+                                                      item['name']
+                                                              ?.toString() ??
+                                                          'Unknown Item',
+                                                      style: TextStyle(
+                                                        color: themeProvider
+                                                            .textColor,
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    child: Text(
+                                                      quantity.toString(),
+                                                      style: TextStyle(
+                                                        color: themeProvider
+                                                            .textColor,
+                                                        fontSize: 14,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    child: Text(
+                                                      '\$${price.toStringAsFixed(2)}',
+                                                      style: TextStyle(
+                                                        color: themeProvider
+                                                            .textColor,
+                                                        fontSize: 14,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.center,
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    child: Text(
+                                                      '\$${total.toStringAsFixed(2)}',
+                                                      style: TextStyle(
+                                                        color: themeProvider
+                                                            .textColor,
+                                                        fontSize: 14,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                      textAlign:
+                                                          TextAlign.right,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          }).toList()),
+                                        ],
                                       ),
                                     ),
-                                    Expanded(
-                                      child: Text(
-                                        'Total',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: themeProvider.textColor,
-                                        ),
-                                        textAlign: TextAlign.right,
+
+                                    // Invoice summary with totals
+                                    Container(
+                                      padding: const EdgeInsets.all(16.0),
+                                      margin: const EdgeInsets.all(16.0),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            themeProvider.cardBackgroundColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                Colors.black.withOpacity(0.05),
+                                            blurRadius: 5,
+                                            spreadRadius: 1,
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          _buildSummaryRow(
+                                            themeProvider,
+                                            'Subtotal',
+                                            currentInvoice!['subtotal']
+                                                .toStringAsFixed(2),
+                                          ),
+                                          if (currentInvoice!['discount'] > 0)
+                                            _buildSummaryRow(
+                                              themeProvider,
+                                              'Discount',
+                                              currentInvoice!['discount']
+                                                  .toStringAsFixed(2),
+                                              isDiscount: true,
+                                            ),
+                                          if (currentInvoice!['tax'] > 0)
+                                            _buildSummaryRow(
+                                              themeProvider,
+                                              'Tax',
+                                              currentInvoice!['tax']
+                                                  .toStringAsFixed(2),
+                                            ),
+                                          const Divider(),
+                                          _buildSummaryRow(
+                                            themeProvider,
+                                            'Total',
+                                            currentInvoice!['total']
+                                                .toStringAsFixed(2),
+                                            isTotal: true,
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                'Payment Method: ',
+                                                style: TextStyle(
+                                                  color: themeProvider.textColor
+                                                      .withOpacity(0.7),
+                                                ),
+                                              ),
+                                              Text(
+                                                currentInvoice![
+                                                    'paymentMethod'],
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color:
+                                                      themeProvider.textColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
-
-                              // Invoice items
-                              ...((currentInvoice!['items'] as List)
-                                  .map((item) {
-                                final quantity = item['quantity']?.toInt() ?? 0;
-                                final price = item['price']?.toDouble() ?? 0.0;
-                                final total = quantity * price;
-
-                                return Container(
-                                  padding: const EdgeInsets.all(16.0),
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: themeProvider.textColor
-                                            .withOpacity(0.1),
-                                        width: 0.5,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          item['name']?.toString() ??
-                                              'Unknown Item',
-                                          style: TextStyle(
-                                            color: themeProvider.textColor,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          quantity.toString(),
-                                          style: TextStyle(
-                                            color: themeProvider.textColor,
-                                            fontSize: 14,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          '\$${price.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            color: themeProvider.textColor,
-                                            fontSize: 14,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          '\$${total.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            color: themeProvider.textColor,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                          textAlign: TextAlign.right,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList()),
-                            ],
-                          ),
-                        ),
-
-                        // Invoice summary with totals
-                        Container(
-                          padding: const EdgeInsets.all(16.0),
-                          margin: const EdgeInsets.all(16.0),
-                          decoration: BoxDecoration(
-                            color: themeProvider.cardBackgroundColor,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 5,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              _buildSummaryRow(
-                                themeProvider,
-                                'Subtotal',
-                                currentInvoice!['subtotal'].toStringAsFixed(2),
-                              ),
-                              if (currentInvoice!['discount'] > 0)
-                                _buildSummaryRow(
-                                  themeProvider,
-                                  'Discount',
-                                  currentInvoice!['discount']
-                                      .toStringAsFixed(2),
-                                  isDiscount: true,
-                                ),
-                              if (currentInvoice!['tax'] > 0)
-                                _buildSummaryRow(
-                                  themeProvider,
-                                  'Tax',
-                                  currentInvoice!['tax'].toStringAsFixed(2),
-                                ),
-                              const Divider(),
-                              _buildSummaryRow(
-                                themeProvider,
-                                'Total',
-                                currentInvoice!['total'].toStringAsFixed(2),
-                                isTotal: true,
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  Text(
-                                    'Payment Method: ',
-                                    style: TextStyle(
-                                      color: themeProvider.textColor
-                                          .withOpacity(0.7),
-                                    ),
-                                  ),
-                                  Text(
-                                    currentInvoice!['paymentMethod'],
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: themeProvider.textColor,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
       ),
     );

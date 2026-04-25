@@ -8,7 +8,7 @@ import 'package:desktop_search_a_holic/backup_history_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:desktop_search_a_holic/mock_firebase.dart';
 
 class ExportService {
   final FirebaseService _firebaseService = FirebaseService();
