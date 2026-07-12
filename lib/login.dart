@@ -3,6 +3,7 @@ import 'package:desktop_search_a_holic/theme_provider.dart';
 import 'package:desktop_search_a_holic/imports.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:desktop_search_a_holic/tenant_provider.dart';
+import 'package:desktop_search_a_holic/subscription_service.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -45,6 +46,30 @@ class _LoginState extends State<Login> {
         backgroundColor: backgroundColor,
         duration: duration,
       ),
+    );
+  }
+
+  Future<void> _showExpiredDialog() {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('Subscription Expired'),
+            content: const Text(
+              'Subscription Expired. Please contact admin to renew.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -130,7 +155,39 @@ class _LoginState extends State<Login> {
         Provider.of<TenantProvider>(context, listen: false)
             .setPharmacyId(pharmacyId);
 
-        _showMessage('Login successful!', backgroundColor: Colors.green);
+        final subscriptionGate =
+            await SubscriptionService(_supabase).checkSubscriptionGate(
+          pharmacyId: pharmacyId,
+        );
+
+        if (!context.mounted) return;
+
+        if (subscriptionGate.status == SubscriptionGateStatus.error) {
+          _showMessage(
+            subscriptionGate.errorMessage ??
+                'Could not validate subscription. Please try again.',
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          );
+          return;
+        }
+
+        if (subscriptionGate.status == SubscriptionGateStatus.expired) {
+          await _showExpiredDialog();
+          return;
+        }
+
+        if (subscriptionGate.status == SubscriptionGateStatus.warning) {
+          _showMessage(
+            'Your subscription expires in ${subscriptionGate.daysRemaining} day(s). '
+            'Please renew soon to avoid interruption.',
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 4),
+          );
+        } else {
+          _showMessage('Login successful!', backgroundColor: Colors.green);
+        }
+
         Navigator.pushReplacementNamed(context, '/dashboard');
       }
     } on AuthException catch (e) {
